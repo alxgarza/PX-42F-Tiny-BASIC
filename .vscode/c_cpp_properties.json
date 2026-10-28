@@ -1,0 +1,13 @@
+{
+    "configurations": [
+        {
+            "name": "PX-42F",
+            "compilerPath": "${env:HOME}/.pico-sdk/toolchain/15_2_Rel1/bin/arm-none-eabi-gcc",
+            "compilerArgs": ["-mcpu=cortex-m33", "-mthumb", "-march=armv8-m.main+fp+dsp", "-mfloat-abi=softfp"],
+            "includePath": ["${workspaceFolder}/px42f", "${workspaceFolder}/src", "${workspaceFolder}/sim"],
+            "cStandard": "c11",
+            "intelliSenseMode": "gcc-arm"
+        }
+    ],
+    "version": 4
+}

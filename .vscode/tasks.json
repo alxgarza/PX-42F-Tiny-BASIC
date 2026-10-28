@@ -1,0 +1,32 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "make",
+            "group": {"kind": "build", "isDefault": true},
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Simulate",
+            "detail": "Run the app on the Mac with the Makefile's SIM_SCRIPT; screenshots in build/sim-out",
+            "type": "shell",
+            "command": "make sim",
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Install on the PX-42F",
+            "detail": "Copy the .bin to the calculator's drive (USB Drive -> Connect to Computer first)",
+            "type": "shell",
+            "command": "make install",
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Clean",
+            "type": "shell",
+            "command": "make clean",
+            "problemMatcher": []
+        }
+    ]
+}
