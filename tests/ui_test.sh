@@ -64,6 +64,9 @@ run "SHIFT R/S runs it in place of what's typed" serial:10_PRINT_8 100 R0C0 R0C1
 has '8'
 lacks 'WHAT?'
 
+run "RUN on R/S's place in the keyword map" serial:10_PRINT_9 100 R5C0 DOWN R6C3 ENTER 100 QUIT
+has '9'
+
 # The terminal
 run "up arrow brings the last line back" serial:PRINT_1 100 serial:PRINT_2 100 $'serial:\x1b[A' 100 QUIT
 has '2'

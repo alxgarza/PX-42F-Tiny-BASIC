@@ -245,6 +245,7 @@ KEYS_NUM
 
 <h3>The keyword map</h3>
 <p>Typing <code>RETURN</code> letter by letter takes six keys. <kbd>SHIFT</kbd> <kbd>&#9660;</kbd> shows a map of BASIC's words laid over the keys: press a key to type its word, with the space or <code>(</code> after it. <kbd>&#9660;</kbd> again shows the second page, the functions. <kbd>&#9660;</kbd> once more, <kbd>ON</kbd> (shown as BACK), or a key with no word on it (an empty box), goes back without typing anything.</p>
+<p><code>RUN</code> is on two keys of the first page: <kbd>ENTER</kbd>'s place, with the other commands, and <kbd>R/S</kbd>'s place on the bottom row, the same key as <kbd>SHIFT</kbd> <kbd>R/S</kbd>, which runs the program without the map.</p>
 <div class="shots">
 <figure>IMG:a/kw1.png|The keyword map, statements|<figcaption>Page 1: the statements and commands.</figcaption></figure>
 <figure>IMG:a/kw2.png|The keyword map, functions|<figcaption>Page 2: the functions and operators.</figcaption></figure>
@@ -274,7 +275,7 @@ KEYS_NUM
 <div class="table-wrap"><table>
 <thead><tr><th>Command</th><th>Does</th></tr></thead>
 <tbody>
-<tr><td><code>RUN</code></td><td>Runs the program from its first line, with every variable set to 0. <kbd>SHIFT</kbd> <kbd>R/S</kbd> does the same without typing it.</td></tr>
+<tr><td><code>RUN</code></td><td>Runs the program from its first line, with every variable set to 0. <kbd>SHIFT</kbd> <kbd>R/S</kbd> does the same without typing it; so does the <kbd>R/S</kbd> key's place in the keyword map, which types <code>RUN</code> for <kbd>ENTER</kbd>.</td></tr>
 <tr><td><code>LIST</code></td><td>Shows the whole program. <code>LIST 100</code>: from line 100 on. <code>LIST 100,200</code>: lines 100 to 200. <kbd>R/S</kbd> stops a long listing.</td></tr>
 <tr><td><code>NEW</code></td><td>Erases the program and the variables.</td></tr>
 <tr><td><code>GOTO 100</code></td><td>Typed at the prompt: runs from line 100 without clearing the variables.</td></tr>

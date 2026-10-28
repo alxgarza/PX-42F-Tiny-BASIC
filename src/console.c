@@ -86,7 +86,8 @@ static const char *const keyword_pages[2][7][6] = {
                 {"SAVE \"", "LOAD \"", "FILES", "NEW", "ERASE \"", NULL},
                 {"AT ", "PSET ", "LINE ", "BOX ", "TONE ", NULL},
                 {"WAIT ", "DEG", "RAD", "DIGITS ", "STOP", NULL},
-                {NULL, NULL, NULL, NULL, NULL, NULL},
+                /* the last row: R/S's place has RUN, as SHIFT R/S does */
+                {NULL, NULL, NULL, "RUN", NULL, NULL},
         },
         {
                 {"SIN(", "COS(", "TAN(", "ASN(", "ACS(", "ATN("},
