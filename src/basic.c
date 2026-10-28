@@ -666,7 +666,6 @@ static void save(const char *name) {
     }
     if (!bio_close(f) || !ok)
         fail(E_HOW);
-    changed = false;
 }
 
 /* One line of a file into the program: 0, or the error (the caller closes
@@ -716,7 +715,6 @@ static void load(const char *name) {
     bio_close(f);
     if (problem)
         fail(problem);
-    changed = false;
 }
 
 static void files(void) {

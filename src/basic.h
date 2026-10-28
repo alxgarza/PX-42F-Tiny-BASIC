@@ -32,8 +32,10 @@ bool basic_line_get(int n, char *buf, int size);
 /* Bytes free for the program. */
 int basic_free(void);
 
-/* The program changed since the last basic_saved() (SAVE and LOAD count
- * as saved). */
+/* The program differs from what basic_saved() last said was in AUTOSAVE.BAS:
+ * any edit, NEW or LOAD since. SAVE and LOAD of a named program don't count
+ * as saving it there -- AUTOSAVE is the program as it is when BASIC is left,
+ * whatever else was saved or loaded. */
 bool basic_changed(void);
 void basic_saved(void);
 

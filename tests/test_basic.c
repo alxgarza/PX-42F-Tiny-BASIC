@@ -298,11 +298,17 @@ static void test_input(void) {
 
 static void test_files(void) {
     TYPED("NEW", "10 PRINT \"A\"", "20 FOR I=1 TO 2:PRINT I:NEXT", "SAVE \"T\"");
-    CHECK(!basic_changed(), "a program just saved is unchanged");
+    basic_saved();
+    CHECK(!basic_changed(), "nothing since basic_saved() is no change");
+    TYPED("SAVE \"U\"", "ERASE \"U\"");
+    CHECK(!basic_changed(), "SAVE leaves a program as it was");
+    TYPED("30 PRINT 5", "SAVE \"U\"", "ERASE \"U\"");
+    CHECK(basic_changed(), "a program edited and then saved still isn't in AUTOSAVE");
+    basic_saved();
     TYPED("NEW");
     CHECK(basic_changed(), "NEW is a change");
     expect(TYPED("LOAD \"T\"", "LIST"), "10 PRINT \"A\"\n20 FOR I=1 TO 2:PRINT I:NEXT\n", "SAVE and LOAD");
-    CHECK(!basic_changed(), "a program just loaded is unchanged");
+    CHECK(basic_changed(), "a program loaded is not what AUTOSAVE has");
     expect(TYPED("FILES"), "T         \n", "FILES");
     expect(TYPED("ERASE \"T\"", "FILES"), "", "ERASE");
     expect(TYPED("LOAD \"T\""), "HOW?\n", "LOAD what isn't there");

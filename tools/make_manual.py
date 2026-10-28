@@ -446,7 +446,7 @@ KEYS_CODES
 </tbody>
 </table></div>
 <p><strong>On a computer.</strong> In USB Drive mode the files are in <code>BIN/APPS/BASIC</code>. A <code>.BAS</code> file is the program as <code>LIST</code> shows it, so you can read and write programs in any text editor. Lines without a number are skipped when loading.</p>
-<p><strong>AUTOSAVE.</strong> When you leave BASIC, the program in memory is saved as <code>AUTOSAVE.BAS</code> if it changed, and loaded again when BASIC starts. <code>FILES</code> doesn't list it.</p>
+<p><strong>AUTOSAVE.</strong> When you leave BASIC, the program in memory is saved as <code>AUTOSAVE.BAS</code>, and loaded again when BASIC starts. It's the program as it is at that moment, whatever you saved or loaded under other names meanwhile: after <code>LOAD "GAME"</code> and leaving, BASIC starts with GAME. It's written when you leave by <kbd>ON</kbd> (and <kbd>ENTER</kbd> to confirm), when you hold <kbd>ON</kbd> to turn off, and when the Sleep Timer or an empty battery turns the calculator off. It isn't written if the calculator crashes or is reset, so <code>SAVE</code> a program you can't lose. <code>FILES</code> doesn't list it.</p>
 
 <!-- ============================================================ -->
 <h2 id="errors">10. Errors</h2>

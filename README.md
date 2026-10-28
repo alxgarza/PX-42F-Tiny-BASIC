@@ -28,8 +28,9 @@ It's built on the PX-42F App Template. The framework's files, `px42f/` and
 
 The prompt is `>`. Type a line with a number and it goes into the program;
 type one without and it runs at once. ON at the prompt asks `LEAVE BASIC?
-ENTER=YES` before leaving; held 2 s, it turns the calculator off. The program you were writing is saved as `AUTOSAVE.BAS`
-and comes back the next time.
+ENTER=YES` before leaving; held 2 s, it turns the calculator off. The program in memory when you leave is saved as
+`AUTOSAVE.BAS` and comes back the next time, whatever you `SAVE`d or `LOAD`ed under other names
+(not written if the calculator crashes or is reset).
 
 ## Typing
 

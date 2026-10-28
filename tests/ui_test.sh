@@ -20,6 +20,12 @@ run() {
     rm -rf "$TMP/out" "$TMP/drive"
     out=$(perl -e 'alarm 30; exec @ARGV' $SIM "$TMP/out" "$TMP/drive" "$@" 2>&1 | tr -d '\r' | grep -av ' ms  ')
 }
+# saved LINE   a line of the AUTOSAVE.BAS the app left on the drive
+saved() {
+    if ! grep -qxF -- "$1" "$TMP/drive/BIN/APPS/BASIC/AUTOSAVE.BAS" 2>/dev/null; then
+        echo "FAIL $name: AUTOSAVE.BAS has no line \"$1\""; failures=$((failures + 1))
+    fi
+}
 # has LINE   the console printed exactly this line
 has() {
     if ! printf '%s\n' "$out" | grep -qxF -- "$1"; then
@@ -66,6 +72,19 @@ lacks 'WHAT?'
 
 run "RUN on R/S's place in the keyword map" serial:10_PRINT_9 100 R5C0 DOWN R6C3 ENTER 100 QUIT
 has '9'
+
+# AUTOSAVE.BAS: the program as it is when BASIC is left, for the next start
+run "AUTOSAVE after typing" serial:10_PRINT_1 100 ON ENTER 100
+saved '10 PRINT 1'
+
+run "AUTOSAVE after SAVE" serial:10_PRINT_2 100 'serial:SAVE_"T"' 100 ON ENTER 100
+saved '10 PRINT 2'
+
+run "AUTOSAVE after LOAD" serial:10_PRINT_3 100 'serial:SAVE_"T"' 100 serial:NEW 100 'serial:LOAD_"T"' 100 ON ENTER 100
+saved '10 PRINT 3'
+
+run "AUTOSAVE after NEW" serial:10_PRINT_4 100 serial:NEW 100 ON ENTER 100
+if [ -s "$TMP/drive/BIN/APPS/BASIC/AUTOSAVE.BAS" ]; then echo "FAIL $name: AUTOSAVE.BAS still has the old program"; failures=$((failures + 1)); fi
 
 # The terminal
 run "up arrow brings the last line back" serial:PRINT_1 100 serial:PRINT_2 100 $'serial:\x1b[A' 100 QUIT
