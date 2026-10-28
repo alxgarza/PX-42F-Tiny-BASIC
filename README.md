@@ -89,8 +89,8 @@ Lowercase is fine; it becomes uppercase, except inside quotes.
 | `BOX x, y, w, h, c` | a filled rectangle |
 | `TONE n` | the calculator's tone 0–9, or 10 (the error sound) |
 | `WAIT ms` | pauses; R/S stops it |
-| `DEG`, `RAD` | angles in degrees or radians (the default) |
-| `DIGITS n` | significant digits `PRINT` shows |
+| `DEG`, `RAD` | angles in degrees or radians (the default). `RUN` starts in radians, so a program that wants degrees says `DEG` itself |
+| `DIGITS n` | significant digits `PRINT` shows (12 at `RUN`) |
 
 The screen is 250 × 122 pixels, with `(0, 0)` at the top left. The text uses 9
 lines of 31 characters under the status bar.
@@ -146,7 +146,7 @@ In a program each message says where: `HOW? IN 120`.
 | Task | Command | Does |
 |---|---|---|
 | Build | `make` | `build/BASIC.bin` |
-| Test | `make test` | `tests/test_basic.c` runs programs through the interpreter on your computer and checks what they print: arithmetic, formatting, control flow, errors, `INPUT`, files, the full program, R/S |
+| Test | `make test` | `tests/test_basic.c` runs programs through the interpreter on your computer and checks what they print: arithmetic, formatting, control flow, errors, `INPUT`, files, the full program, R/S. Then `tests/ui_test.sh` runs scripted keys and terminal input through the simulator and checks what the editor and console print: editing, deleting, discarding, history, cursor keys, Ctrl-C, CR LF |
 | Simulate | `make sim` | types a session on the simulated USB console and keys; screenshots in `build/sim-out` |
 | Install on the PX-42F | `make install` | copies `BASIC.bin` to the calculator's drive |
 
@@ -160,3 +160,5 @@ result can differ in the last digits; printed at 12 digits, they agree.
 | `src/bio.h` | what the interpreter needs from the machine |
 | `src/console.c`, `console.h` | the screen as a terminal, the two keyboard modes, the keyword map, the USB console |
 | `src/main.c` | the prompt, `AUTOSAVE`, and `bio.h` on the PX-42F |
+| `tools/shots.sh` | takes every screenshot the manual uses, in `build/shots`, then builds the manual and the keyword picture |
+| `tools/make_manual.py`, `manual.css` | build `basic_manual.html`; the keyboard maps come from `src/console.c` |

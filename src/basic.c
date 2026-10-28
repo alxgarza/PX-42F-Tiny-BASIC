@@ -337,7 +337,7 @@ static num_t number(void) {
     num_t r;
     if (px->dec_from_string(&r, buf) != 0)
         fail(E_WHAT);
-    return r;
+    return checked(r); /* 1E99999 is too big, not 0 */
 }
 
 /* ===================== expressions ===================== */
@@ -916,6 +916,8 @@ static void st_list(void) {
 }
 
 static void st_run(void) {
+    degrees = false; /* a program means the same whatever was typed before it */
+    print_digits = 12;
     clear_vars();
     clear_run_state();
     if (prog_len == 0)

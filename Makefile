@@ -55,6 +55,8 @@ test: | build
 	cc -std=c11 -g -Wall -Wextra -fsanitize=address,undefined -Ipx42f -Isrc -Isim \
 	   tests/test_basic.c src/basic.c sim/sim_dec.c -o build/test_basic
 	build/test_basic
+	$(MAKE) build/sim
+	tests/ui_test.sh
 
 # Onto the calculator's drive: Settings -> USB Drive -> Connect to Computer.
 install: build/$(NAME).bin

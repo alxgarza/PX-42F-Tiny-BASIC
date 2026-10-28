@@ -455,8 +455,8 @@ table.ref td:first-child { white-space: nowrap; }
 <tr><td><code>FOR</code> &hellip; <code>TO</code> &hellip; <code>STEP</code>, <code>NEXT</code></td><td>Repeats the lines up to <code>NEXT</code>, the variable going from the first value to the last. <code>STEP</code> can be a fraction or negative; without it, 1.</td><td><code>FOR A=0 TO 1 STEP 0.1</code></td></tr>
 <tr><td><code>END</code>, <code>STOP</code></td><td>Ends the program.</td><td></td></tr>
 <tr><td><code>REM</code></td><td>A note: the rest of the line is ignored.</td><td><code>REM DRAW THE AXES</code></td></tr>
-<tr><td><code>DEG</code>, <code>RAD</code></td><td>Angles in degrees, or radians (the default).</td><td><code>DEG:PRINT SIN(30)</code></td></tr>
-<tr><td><code>DIGITS</code></td><td>Digits PRINT shows, 1 to 34; 12 at first.</td><td><code>DIGITS 34</code></td></tr>
+<tr><td><code>DEG</code>, <code>RAD</code></td><td>Angles in degrees, or radians (the default). <code>RUN</code> starts in radians, so a program that wants degrees says <code>DEG</code> itself.</td><td><code>DEG:PRINT SIN(30)</code></td></tr>
+<tr><td><code>DIGITS</code></td><td>Digits PRINT shows, 1 to 34; 12 at first, and again at each <code>RUN</code>.</td><td><code>DIGITS 34</code></td></tr>
 <tr><td><code>CLS</code>, <code>AT</code>, <code>PSET</code>, <code>LINE</code>, <code>BOX</code>, <code>TONE</code>, <code>WAIT</code></td><td colspan="2">The screen, sound and time: <a href="#screen">section 8</a>.</td></tr>
 <tr><td><code>SAVE</code>, <code>LOAD</code>, <code>FILES</code>, <code>ERASE</code></td><td colspan="2">Files: <a href="#files">section 9</a>.</td></tr>
 </tbody>

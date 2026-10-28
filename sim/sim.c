@@ -13,7 +13,8 @@
  *                     also SIGMA, XEQ, ENTER, BACKSPACE, UP, DOWN, SHIFT, RS
  *   ON                ON: ends the app (key() returns PX_KEY_QUIT) -- or,
  *                     after on_key(1), a key like the others (PX_KEY_ON)
- *   QUIT              end the app, as the Sleep Timer does
+ *   QUIT              end the app, as the Sleep Timer does (when it next
+ *                     waits for a key: a running program finishes first)
  *   250               let 250 ms pass
  *   shot:NAME         save what show() last sent as OUT_DIR/NAME.png
  *   serial:TEXT       TEXT arrives on the serial port, then Enter (a CR);
@@ -235,8 +236,13 @@ static int sim_key(int wait_ms) {
         serial_arrived = false;
         return PX_KEY_NONE;
     }
+    /* The end of the script, and QUIT, end the app when it waits for a key
+     * (wait_ms != 0), not in a quick look at the keys (0): a program still
+     * running finishes what it was doing. */
     if (next_word >= word_count)
-        return PX_KEY_QUIT;
+        return wait_ms == 0 ? PX_KEY_NONE : PX_KEY_QUIT;
+    if (wait_ms == 0 && strcasecmp(words[next_word], "QUIT") == 0)
+        return PX_KEY_NONE;
     /* The wait ran out before the next key (a pause, a shot or serial text
      * still to come, at their time). */
     const char *next = words[next_word];

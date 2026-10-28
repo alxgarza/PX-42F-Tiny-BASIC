@@ -699,7 +699,8 @@ static int serial_typed(line_t *l, char ch, bool in_program) {
     if (esc == ESC_START) {
         esc = ch == '[' ? ESC_CSI : ch == 'O' ? ESC_SS3 : ESC_NONE;
         esc_number = 0;
-        return 0;
+        if (esc != ESC_NONE)
+            return 0; /* anything else after Esc is an ordinary character */
     }
     if (esc != ESC_NONE) {
         if (ch >= '0' && ch <= '9') {
@@ -849,11 +850,11 @@ static bool look(int wait_ms) {
         }
     }
     char in[32];
-    int n = px->serial_read(in, ahead_len < (int) sizeof(ahead) - 32 ? 32 : 0);
+    int n = px->serial_read(in, sizeof(in));
     for (int i = 0; i < n; i++) {
         if (in[i] == 3)
             stop = true;
-        else
+        else if (ahead_len < (int) sizeof(ahead)) /* full: what comes after is dropped, Ctrl-C still seen */
             ahead[ahead_len++] = in[i];
     }
     return stop;

@@ -236,6 +236,9 @@ static void test_arithmetic(void) {
 static void test_errors(void) {
     basic_new();
     expect(TYPED("PRINT 1/0"), "HOW?\n", "division by zero");
+    expect(TYPED("PRINT 1E99999"), "HOW?\n", "a number too big to be one (infinity, not 0)");
+    expect(TYPED("NEW", "10 PRINT SIN(30)", "DEG", "DIGITS 3", "RUN"), "-0.988031624093\n",
+           "RUN starts in radians and 12 digits, whatever was typed before");
     expect(TYPED("PRINT SQR(-1)"), "HOW?\n", "no answer");
     expect(TYPED("PRIMT 1"), "WHAT?\n", "a word it doesn't know");
     expect(TYPED("PRINT (1"), "WHAT?\n", "a missing )");

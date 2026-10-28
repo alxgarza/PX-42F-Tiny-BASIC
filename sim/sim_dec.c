@@ -81,7 +81,9 @@ int sim_dec_to_int(int32_t *r, const px_dec_t *a) {
 int sim_dec_from_string(px_dec_t *r, const char *s) {
     char *end;
     double v = strtod(s, &end);
-    if (end == s || *end != 0 || isnan(v) || isinf(v)) {
+    /* As the library: too big is infinity, and still a success -- only
+     * text that isn't a number is not. */
+    if (end == s || *end != 0 || isnan(v)) {
         put(r, NAN);
         return -1;
     }
