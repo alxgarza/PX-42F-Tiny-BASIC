@@ -57,6 +57,13 @@ lacks 'WHAT?'
 run "after an edit, the list is still there, on the same line" "${PROGRAM[@]}" UP UP ENTER R5C0 R5C2 ENTER DOWN ON serial:LIST 100 QUIT
 has '40 NEXT2'
 
+run "SHIFT R/S runs the program" serial:10_PRINT_7 100 R5C0 R6C3 100 QUIT
+has '7'
+
+run "SHIFT R/S runs it in place of what's typed" serial:10_PRINT_8 100 R0C0 R0C1 R5C0 R6C3 100 QUIT
+has '8'
+lacks 'WHAT?'
+
 # The terminal
 run "up arrow brings the last line back" serial:PRINT_1 100 serial:PRINT_2 100 $'serial:\x1b[A' 100 QUIT
 has '2'

@@ -238,6 +238,7 @@ KEYS_NUM
 <tr><td><kbd>&larr;</kbd></td><td>Deletes the last character. <kbd>SHIFT</kbd> <kbd>&larr;</kbd> deletes the whole line.</td></tr>
 <tr><td><kbd>ENTER</kbd></td><td>Enters the line.</td></tr>
 <tr><td><kbd>R/S</kbd></td><td>While a program runs, or waits in <code>INPUT</code>: stops it. Typing: <code>?</code> in ALPHA, a space in NUM.</td></tr>
+<tr><td><kbd>SHIFT</kbd> <kbd>R/S</kbd></td><td>At the prompt: <code>RUN</code>. It runs the program at once, in place of whatever is typed on the line.</td></tr>
 <tr><td><kbd>ON</kbd></td><td>While a program runs or waits in <code>INPUT</code>: stops it, as <kbd>R/S</kbd> does. At the prompt: asks before leaving BASIC. Held 2 seconds: turns the calculator off.</td></tr>
 </tbody>
 </table></div>
@@ -273,7 +274,7 @@ KEYS_NUM
 <div class="table-wrap"><table>
 <thead><tr><th>Command</th><th>Does</th></tr></thead>
 <tbody>
-<tr><td><code>RUN</code></td><td>Runs the program from its first line, with every variable set to 0.</td></tr>
+<tr><td><code>RUN</code></td><td>Runs the program from its first line, with every variable set to 0. <kbd>SHIFT</kbd> <kbd>R/S</kbd> does the same without typing it.</td></tr>
 <tr><td><code>LIST</code></td><td>Shows the whole program. <code>LIST 100</code>: from line 100 on. <code>LIST 100,200</code>: lines 100 to 200. <kbd>R/S</kbd> stops a long listing.</td></tr>
 <tr><td><code>NEW</code></td><td>Erases the program and the variables.</td></tr>
 <tr><td><code>GOTO 100</code></td><td>Typed at the prompt: runs from line 100 without clearing the variables.</td></tr>
@@ -502,7 +503,7 @@ KEYS_CODES
 <tr><th>The calculator</th><td><code>CLS AT PSET LINE BOX TONE WAIT DEG RAD DIGITS</code></td></tr>
 <tr><th>Functions</th><td><code>SIN COS TAN ASN ACS ATN SQR EXP LOG LOG10 ABS SGN INT RND PI KEY SIZE</code></td></tr>
 <tr><th>Operators</th><td><code>^ * / MOD + - = &lt;&gt; &lt; &gt; &lt;= &gt;= NOT AND OR</code></td></tr>
-<tr><th>Keys</th><td><kbd>SHIFT</kbd> <kbd>ENTER</kbd> ALPHA/NUM &middot; <kbd>SHIFT</kbd> other mode once &middot; <kbd>&#9650;</kbd> <kbd>&#9660;</kbd> program editor, or move in a line &middot; <kbd>SHIFT</kbd> <kbd>&#9650;</kbd> history &middot; <kbd>SHIFT</kbd> <kbd>&#9660;</kbd> keywords &middot; <kbd>&larr;</kbd> delete &middot; <kbd>R/S</kbd> stop &middot; <kbd>ON</kbd> stop, or leave (asks)</td></tr>
+<tr><th>Keys</th><td><kbd>SHIFT</kbd> <kbd>ENTER</kbd> ALPHA/NUM &middot; <kbd>SHIFT</kbd> other mode once &middot; <kbd>&#9650;</kbd> <kbd>&#9660;</kbd> program editor, or move in a line &middot; <kbd>SHIFT</kbd> <kbd>&#9650;</kbd> history &middot; <kbd>SHIFT</kbd> <kbd>&#9660;</kbd> keywords &middot; <kbd>&larr;</kbd> delete &middot; <kbd>R/S</kbd> stop &middot; <kbd>SHIFT</kbd> <kbd>R/S</kbd> RUN &middot; <kbd>ON</kbd> stop, or leave (asks)</td></tr>
 </tbody>
 </table></div>
 

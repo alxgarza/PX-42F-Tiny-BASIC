@@ -462,6 +462,11 @@ static int key_typed(line_t *l, int k, bool in_program) {
         confirm_leave();
         return quit ? -1 : 0;
     }
+    if (k == PX_KEY_RS && shifted && !in_program) { /* SHIFT R/S: RUN, in place of what's typed */
+        shifted = false;
+        set_text(l, "RUN");
+        return 1;
+    }
     if (k == PX_KEY_SHIFT) {
         shifted = !shifted;
     } else if (k == KEY_UP || k == KEY_DOWN) {

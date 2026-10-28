@@ -50,6 +50,7 @@ The keys type in two modes, shown at the top right of the screen:
 | ← | deletes the character before the cursor; SHIFT ← the whole line |
 | ENTER | enters the line |
 | R/S | stops a running program, or an `INPUT` |
+| SHIFT R/S | `RUN`: runs the program, in place of whatever is typed |
 | ON | stops a running program or an `INPUT`, like R/S; at the prompt, asks before leaving BASIC (ENTER or ON again: yes) |
 
 **From a computer.** With the calculator on USB, open its console
