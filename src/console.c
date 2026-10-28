@@ -83,7 +83,7 @@ static const char *const keyword_pages[2][7][6] = {
                 {"PRINT ", "INPUT ", "IF ", "THEN ", "GOTO ", "GOSUB "},
                 {"FOR ", "TO ", "STEP ", "NEXT ", "RETURN", "END"},
                 {"RUN", "LET ", "REM ", "CLS", "LIST", NULL},
-                {"SAVE \"", "LOAD \"", "FILES", "NEW", "ERASE \"", NULL},
+                {"SAVE ", "LOAD ", "FILES", "NEW", "ERASE ", NULL},
                 {"AT ", "PSET ", "LINE ", "BOX ", "TONE ", NULL},
                 {"WAIT ", "DEG", "RAD", "DIGITS ", "STOP", NULL},
                 /* the last row: R/S's place has RUN, as SHIFT R/S does */

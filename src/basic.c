@@ -627,13 +627,14 @@ static bool program_line(const char *s) {
 
 /* ===================== files ===================== */
 
-/* "NAME", or NAME without the quotes -- in capitals: in quotes it's as
+/* "NAME", or NAME without the quotes (then no spaces) -- in capitals: in quotes it's as
  * typed, and the drive doesn't tell "Ring" from "RING" anyway. */
 static void file_name(char *name) {
     int len;
     const char *s;
     skip();
-    if (pc < end && *pc == '"') {
+    bool quoted = pc < end && *pc == '"';
+    if (quoted) {
         s = string(&len);
     } else {
         s = pc;
@@ -647,7 +648,7 @@ static void file_name(char *name) {
         fail(E_HOW);
     for (int i = 0; i < len; i++) {
         char c = (char) toupper((unsigned char) s[i]);
-        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || (c == ' ' && quoted)))
             fail(E_HOW);
         name[i] = c;
     }

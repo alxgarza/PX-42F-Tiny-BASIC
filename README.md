@@ -119,7 +119,7 @@ lines of 31 characters under the status bar.
 | `ERASE "NAME"` | deletes one |
 
 Names are up to 20 letters, digits, `_` or `-`, with or without the quotes
-(`LOAD RINGS3D`); lower case is the same name in
+(`LOAD RINGS3D`); in quotes a space is allowed too (`SAVE "My Ring"`); lower case is the same name in
 capitals (`"Ring_3d"` is `RING_3D`). A `.BAS` file is the
 program as `LIST` shows it, so you can also write one on a computer.
 

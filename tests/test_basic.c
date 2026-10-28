@@ -318,6 +318,8 @@ static void test_files(void) {
     expect(TYPED("FILES"), "RING_3D   \n", "listed in capitals");
     expect(TYPED("NEW", "load ring_3d", "LIST"), "10 PRINT 7\n", "a name without quotes");
     expect(TYPED("LOAD RING 3D"), "WHAT?\n", "a name without quotes ends at a space");
+    expect(TYPED("NEW", "10 PRINT 8", "save \"My Ring\"", "NEW", "load \"my ring\"", "LIST"), "10 PRINT 8\n", "a space inside quotes");
+    TYPED("ERASE \"my ring\"");
     TYPED("ERASE \"ring_3d\"");
 }
 
