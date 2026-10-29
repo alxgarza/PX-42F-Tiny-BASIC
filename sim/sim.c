@@ -23,14 +23,27 @@
  * the app asks for it (millis()) -- an app that computes without waiting
  * still sees time pass, and its key checks still come round.
  * After the last word the app is ended as by QUIT. Sounds, the serial port's
- * output and IR transmissions are printed. */
+ * output and IR transmissions are printed.
+ *
+ *   build/sim --live DRIVE_DIR FRAME_FD
+ *
+ * Live, for sim/live.py: the clock is the computer's, and instead of a script
+ * the lines on stdin say what happens -- "down NAME" and "up NAME" (a key, as
+ * above, or ON), "serial TEXT" (then a CR), "quit". The screen goes to
+ * FRAME_FD each time show() is called (at most every 16 ms, and when the app
+ * waits): first the line "W H STRIDE", then messages: "F" and a frame
+ * (PX_SCREEN_H rows of PX_SCREEN_STRIDE bytes), "S" and a path on the drive
+ * and a newline (that sound starts), "X" (the sound stops). */
 #include <dirent.h>
 #include <errno.h>
+#include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "fonts/font_10x16.h"
@@ -60,10 +73,66 @@ static char serial_in[4096];
 static size_t serial_in_len, serial_in_pos;
 static bool serial_arrived; /* key() returns PX_KEY_NONE once, for the app to look */
 
+/* Live: what stdin has said and the screen not yet sent. */
+#define FRAME_EVERY_MS 16
+#define EVENTS_MAX     64
+static bool live, input_open = true, quit_asked, frame_dirty;
+static int frame_fd;
+static struct timespec live_start;
+static uint32_t last_frame_ms;
+static int events[EVENTS_MAX], event_first, event_count;
+static char input_line[1200];
+static size_t input_len;
+
+/* The time to print: live, it's the computer's. */
+static uint32_t live_clock(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    now_ms = (uint32_t) ((t.tv_sec - live_start.tv_sec) * 1000 + (t.tv_nsec - live_start.tv_nsec) / 1000000);
+    return now_ms;
+}
+
+static uint32_t stamp(void) {
+    return live ? live_clock() : now_ms;
+}
+
 /* ----- the screen ----- */
+
+/* One message to the page: a letter, then len bytes. */
+static void emit(char tag, const void *data, size_t len) {
+    const uint8_t *p = (const uint8_t *) &tag;
+    size_t left = 1;
+    for (int part = 0; part < 2; part++) {
+        while (left > 0) {
+            ssize_t n = write(frame_fd, p, left);
+            if (n <= 0) {
+                quit_asked = true; /* nobody is looking any more */
+                return;
+            }
+            p += n;
+            left -= (size_t) n;
+        }
+        p = data;
+        left = len;
+    }
+}
+
+static void flush_frame(void) {
+    if (!frame_dirty)
+        return;
+    frame_dirty = false;
+    emit('F', shown, sizeof(shown));
+}
 
 static void sim_show(void) {
     memcpy(shown, screen, sizeof(shown));
+    if (live) {
+        frame_dirty = true;
+        if (live_clock() - last_frame_ms >= FRAME_EVERY_MS) {
+            last_frame_ms = now_ms;
+            flush_frame();
+        }
+    }
 }
 
 static void sim_clear(void) {
@@ -225,7 +294,97 @@ static uint32_t pass_time(int ms) {
     return passed;
 }
 
+static void push_event(int key) {
+    if (event_count < EVENTS_MAX)
+        events[(event_first + event_count++) % EVENTS_MAX] = key;
+}
+
+/* One line from stdin: "down NAME", "up NAME", "serial TEXT" or "quit". */
+static void live_line(char *line) {
+    bool down = strncmp(line, "down ", 5) == 0;
+    if (down || strncmp(line, "up ", 3) == 0) {
+        const char *name = line + (down ? 5 : 3);
+        bool on = strcasecmp(name, "ON") == 0;
+        int key = on ? PX_KEY_ON : key_by_name(name);
+        if (on && !on_is_key) {
+            if (down)
+                quit_asked = true;
+        } else if (key >= 0)
+            push_event(down ? key : key | PX_KEY_RELEASED);
+    } else if (strncmp(line, "serial ", 7) == 0) {
+        for (const char *s = line + 7; *s && serial_in_len < sizeof(serial_in) - 1; s++)
+            serial_in[serial_in_len++] = *s;
+        serial_in[serial_in_len++] = '\r';
+        serial_arrived = true;
+    } else if (strcmp(line, "quit") == 0) {
+        quit_asked = true;
+    }
+}
+
+/* Waits up to ms (< 0: as long as it takes) for stdin to say something, and
+ * acts on the lines that come. */
+static void live_input(int ms) {
+    struct pollfd p = {0, POLLIN, 0};
+    if (!input_open) {
+        if (ms > 0)
+            usleep((useconds_t) ms * 1000);
+        return;
+    }
+    if (poll(&p, 1, ms) <= 0)
+        return;
+    char buf[256];
+    ssize_t n = read(0, buf, sizeof(buf));
+    if (n <= 0) {
+        input_open = false;
+        quit_asked = true; /* the bridge has gone */
+        return;
+    }
+    for (ssize_t i = 0; i < n; i++) {
+        if (buf[i] == '\n') {
+            input_line[input_len] = 0;
+            live_line(input_line);
+            input_len = 0;
+        } else if (input_len < sizeof(input_line) - 1) {
+            input_line[input_len++] = buf[i];
+        }
+    }
+}
+
+/* key() with the computer's clock: the next event the page sent, or the wait
+ * running out. The end of the app is as in the script: only when it waits. */
+static int live_key(int wait_ms) {
+    uint32_t start = live_clock();
+    for (;;) {
+        live_input(0);
+        if (event_count > 0) {
+            int key = events[event_first];
+            event_first = (event_first + 1) % EVENTS_MAX;
+            event_count--;
+            return key;
+        }
+        if (serial_arrived) {
+            serial_arrived = false;
+            return PX_KEY_NONE;
+        }
+        if (wait_ms == 0)
+            return PX_KEY_NONE;
+        if (quit_asked)
+            return PX_KEY_QUIT;
+        int left = -1;
+        if (wait_ms > 0) {
+            uint32_t passed = live_clock() - start;
+            if (passed >= (uint32_t) wait_ms)
+                return PX_KEY_NONE;
+            left = wait_ms - (int) passed;
+        }
+        flush_frame();
+        live_input(left);
+    }
+}
+
 static int sim_key(int wait_ms) {
+    if (live)
+        return live_key(wait_ms);
     if (pending_up >= 0) {
         int key = pending_up;
         pending_up = -1;
@@ -267,18 +426,35 @@ static int sim_key(int wait_ms) {
 }
 
 static uint32_t sim_millis(void) {
+    if (live)
+        return live_clock();
     if (pass_time(1) == 0)
         now_ms++; /* at a key: time moves on all the same */
     return now_ms;
 }
 
 static void sim_sleep(int ms) {
+    if (live) {
+        flush_frame();
+        if (ms > 0)
+            usleep((useconds_t) ms * 1000);
+        return;
+    }
     uint32_t passed = pass_time(ms > 0 ? ms : 0);
     if (ms > 0 && passed < (uint32_t) ms)
         now_ms += (uint32_t) ms - passed; /* at a key: it waits for key() */
 }
 
 static void sim_datetime(px_datetime_t *now) { /* 2026-10-27 12:00 when the app starts */
+    if (live) {
+        struct timespec t;
+        struct tm tm;
+        clock_gettime(CLOCK_REALTIME, &t);
+        localtime_r(&t.tv_sec, &tm);
+        *now = (px_datetime_t) {tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
+                                tm.tm_min,         tm.tm_sec,     (int32_t) (t.tv_nsec / 1000000), tm.tm_wday};
+        return;
+    }
     uint32_t s = 12 * 3600 + now_ms / 1000;
     *now = (px_datetime_t) {2026, 10, 27, (int32_t) (s / 3600 % 24), (int32_t) (s / 60 % 60), (int32_t) (s % 60),
                             (int32_t) (now_ms % 1000), 2};
@@ -293,20 +469,81 @@ static uint32_t sim_random(void) {
 
 /* ----- sound ----- */
 
+static uint32_t sound_end_ms;
+static int live_play(const char *path, bool wait);
+
+/* The file a TONE number is: 0-9 are /SOUNDS/TONES, 10 the error sound. */
+static const char *tone_path(int tone, char *buf, size_t size) {
+    if (tone == 10)
+        return "/SOUNDS/ERROR.wav";
+    snprintf(buf, size, "/SOUNDS/TONES/TONE%d.wav", tone);
+    return buf;
+}
+
 static void sim_tone(int tone) {
-    printf("%6u ms  tone %d\n", now_ms, tone);
+    char buf[40];
+    if (live)
+        live_play(tone_path(tone, buf, sizeof(buf)), true);
+    else
+        printf("%6u ms  tone %d\n", stamp(), tone);
 }
 
 static void sim_tone_async(int tone) {
-    printf("%6u ms  tone %d, not waiting\n", now_ms, tone);
+    char buf[40];
+    if (live)
+        live_play(tone_path(tone, buf, sizeof(buf)), false);
+    else
+        printf("%6u ms  tone %d, not waiting\n", stamp(), tone);
 }
 
-/* Sounds take no time here: none is ever still playing. */
-static int sim_sound_playing(void) {
+/* A MIDI song "plays" for SIM_MIDI_MS from midi_play(): the simulator has
+ * no synthesizer, only the answers midi_status() would give. */
+#define SIM_MIDI_MS 20000
+static uint32_t midi_start_ms, midi_end_ms;
+static bool full_path(const char *path, char *full, size_t size);
+
+static int sim_midi_play(const char *path) {
+    char full[1200];
+    if (!full_path(path, full, sizeof(full)))
+        return PX_MIDI_NOT_FOUND;
+    FILE *f = fopen(full, "rb");
+    if (f == NULL) {
+        printf("%6u ms  midi %s (not found)\n", stamp(), path);
+        return PX_MIDI_NOT_FOUND;
+    }
+    char magic[4] = {0};
+    bool ok = fread(magic, 1, 4, f) == 4 && memcmp(magic, "MThd", 4) == 0;
+    fclose(f);
+    printf("%6u ms  midi %s%s\n", stamp(), path, ok ? "" : " (not a MIDI file)");
+    if (!ok)
+        return PX_MIDI_NOT_MIDI;
+    midi_start_ms = stamp();
+    midi_end_ms = midi_start_ms + SIM_MIDI_MS;
     return 0;
 }
 
+static void sim_midi_status(px_midi_status_t *st) {
+    memset(st, 0, sizeof(*st));
+    if (stamp() >= midi_end_ms)
+        return;
+    st->length_ms = SIM_MIDI_MS;
+    st->elapsed_ms = stamp() - midi_start_ms;
+    st->channels = 0x0201u << (st->elapsed_ms / 300 % 7) | 0x0200u; /* something moving */
+    st->voices = (uint32_t) __builtin_popcount(st->channels) * 2;
+}
+
+/* In a script sounds take no time: none is ever still playing (a MIDI
+ * song is). */
+static int sim_sound_playing(void) {
+    return (live && stamp() < sound_end_ms) || stamp() < midi_end_ms;
+}
+
 static void sim_sound_stop(void) {
+    midi_end_ms = 0;
+    if (live && sound_end_ms != 0) {
+        sound_end_ms = 0;
+        emit('X', NULL, 0);
+    }
 }
 
 /* ----- files: DRIVE_DIR is the drive ----- */
@@ -333,17 +570,69 @@ static void make_dirs(const char *path) { /* every folder in path, as mkdir -p *
     mkdir(p, 0755);
 }
 
+/* How long a WAV file lasts, in ms: its data chunk over its byte rate. -1 if
+ * it isn't one the page could play either. */
+static int wav_ms(const char *full) {
+    uint8_t h[12], c[8], fmt[16];
+    uint32_t byte_rate = 0;
+    int ms = -1;
+    FILE *f = fopen(full, "rb");
+    if (f == NULL)
+        return -1;
+    if (fread(h, 1, 12, f) == 12 && memcmp(h, "RIFF", 4) == 0 && memcmp(h + 8, "WAVE", 4) == 0) {
+        while (fread(c, 1, 8, f) == 8) {
+            uint32_t size = c[4] | c[5] << 8 | c[6] << 16 | (uint32_t) c[7] << 24;
+            if (memcmp(c, "fmt ", 4) == 0 && size >= 16 && fread(fmt, 1, 16, f) == 16) {
+                byte_rate = fmt[8] | fmt[9] << 8 | fmt[10] << 16 | (uint32_t) fmt[11] << 24;
+                if (fseek(f, (long) (size - 16 + (size & 1)), SEEK_CUR) != 0)
+                    break;
+            } else if (memcmp(c, "data", 4) == 0) {
+                ms = byte_rate > 0 ? (int) ((uint64_t) size * 1000 / byte_rate) : -1;
+                break;
+            } else if (fseek(f, (long) (size + (size & 1)), SEEK_CUR) != 0) {
+                break;
+            }
+        }
+    }
+    fclose(f);
+    return ms;
+}
+
+/* The page plays the file; the app waits as long as it lasts (wait), or not.
+ * A new sound stops the one playing. */
+static int live_play(const char *path, bool wait) {
+    char full[1200], on_drive[1200];
+    int ms;
+    if (!full_path(path, full, sizeof(full)) || access(full, R_OK) != 0) {
+        printf("%6u ms  play %s (not found)\n", stamp(), path);
+        return -1;
+    }
+    ms = wav_ms(full);
+    printf("%6u ms  play %s%s%s\n", stamp(), path, wait ? "" : ", not waiting", ms < 0 ? " (not a WAV file?)" : "");
+    snprintf(on_drive, sizeof(on_drive), "%s\n", full + strlen(drive_dir));
+    flush_frame();
+    emit('S', on_drive, strlen(on_drive));
+    sound_end_ms = stamp() + (uint32_t) (ms > 0 ? ms : 0);
+    if (wait && ms > 0)
+        usleep((useconds_t) ms * 1000);
+    return 0;
+}
+
 static int sim_play(const char *path) {
+    if (live)
+        return live_play(path, true);
     char full[1200];
     bool ok = full_path(path, full, sizeof(full)) && access(full, R_OK) == 0;
-    printf("%6u ms  play %s%s\n", now_ms, path, ok ? "" : " (not found)");
+    printf("%6u ms  play %s%s\n", stamp(), path, ok ? "" : " (not found)");
     return ok ? 0 : -1;
 }
 
 static int sim_play_async(const char *path) {
+    if (live)
+        return live_play(path, false);
     char full[1200];
     bool ok = full_path(path, full, sizeof(full)) && access(full, R_OK) == 0;
-    printf("%6u ms  play %s, not waiting%s\n", now_ms, path, ok ? "" : " (not found)");
+    printf("%6u ms  play %s, not waiting%s\n", stamp(), path, ok ? "" : " (not found)");
     return ok ? 0 : -1;
 }
 
@@ -400,7 +689,7 @@ static int sim_save(const char *path, const void *data, int size) {
     if (f < 0)
         return -1;
     int ok = sim_write(f, data, size) == size;
-    printf("%6u ms  saved %s (%d bytes)\n", now_ms, path, size);
+    printf("%6u ms  saved %s (%d bytes)\n", stamp(), path, size);
     return sim_close(f) == 0 && ok ? 0 : -1;
 }
 
@@ -457,7 +746,7 @@ static int sim_serial_read(void *data, int size) {
 }
 
 static void sim_ir_send(const px_ir_burst_t *b) {
-    printf("%6u ms  IR %u Hz, %d timings:", now_ms, b->carrier_hz, b->count);
+    printf("%6u ms  IR %u Hz, %d timings:", stamp(), b->carrier_hz, b->count);
     for (int i = 0; i < b->count && i < 8; i++)
         printf(" %u", b->us[i]);
     printf(b->count > 8 ? " ...\n" : "\n");
@@ -521,21 +810,36 @@ static const px_api_t sim_api = {
         .dec_cmp = sim_dec_cmp,
         .dec_class = sim_dec_class,
         .on_key = sim_on_key,
+        .midi_play = sim_midi_play,
+        .midi_status = sim_midi_status,
 };
 
 int main(int argc, char **argv) {
-    if (argc < 3) {
-        fprintf(stderr, "usage: %s OUT_DIR DRIVE_DIR [WORD...]\n", argv[0]);
+    if (argc == 4 && strcmp(argv[1], "--live") == 0) {
+        live = true;
+        drive_dir = argv[2];
+        frame_fd = atoi(argv[3]);
+        make_dirs(drive_dir);
+        signal(SIGPIPE, SIG_IGN);
+        setvbuf(stdout, NULL, _IONBF, 0);
+        clock_gettime(CLOCK_MONOTONIC, &live_start);
+        dprintf(frame_fd, "%d %d %d\n", PX_SCREEN_W, PX_SCREEN_H, PX_SCREEN_STRIDE);
+    } else if (argc < 3) {
+        fprintf(stderr, "usage: %s OUT_DIR DRIVE_DIR [WORD...]\n       %s --live DRIVE_DIR FRAME_FD\n", argv[0],
+                argv[0]);
         return 2;
+    } else {
+        out_dir = argv[1];
+        drive_dir = argv[2];
+        make_dirs(out_dir);
+        make_dirs(drive_dir);
+        words = argv + 3;
+        word_count = argc - 3;
     }
-    out_dir = argv[1];
-    drive_dir = argv[2];
-    make_dirs(out_dir);
-    make_dirs(drive_dir);
-    words = argv + 3;
-    word_count = argc - 3;
     px = &sim_api;
     int result = app_main();
-    printf("%6u ms  app_main returned %d%s\n", now_ms, result, result == PX_EXIT_OFF ? " (turn off)" : "");
+    sim_sound_stop(); /* a sound still playing stops when the app ends */
+    flush_frame();
+    printf("%6u ms  app_main returned %d%s\n", stamp(), result, result == PX_EXIT_OFF ? " (turn off)" : "");
     return 0;
 }

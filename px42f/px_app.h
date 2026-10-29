@@ -35,7 +35,7 @@ extern "C" {
  *    from n up, and an older firmware refuses it. */
 
 #define PX_APP_MAGIC       0x50415850u /* "PXAP" */
-#define PX_APP_API_VERSION 3 /* 2: decimal numbers; 3: on_key() */
+#define PX_APP_API_VERSION 4 /* 2: decimal numbers; 3: on_key(); 4: MIDI */
 #define PX_APP_BASE        0x20060000u
 #define PX_APP_RAM         0x20000u /* 128 KB */
 
@@ -162,6 +162,20 @@ enum {
 /* dec_to_string()'s longest: sign, 34 digits, "E", sign, 4 digits, 0. */
 #define PX_DEC_STRING_MAX 48
 
+/* ----- MIDI ----- midi_play() */
+#define PX_MIDI_NOT_FOUND (-1) /* no such file, or it can't be read */
+#define PX_MIDI_NOT_MIDI  (-2) /* not a Standard MIDI File the synth can play */
+#define PX_MIDI_TOO_BIG   (-3) /* over 128 KB */
+#define PX_MIDI_NO_MEMORY (-4)
+
+/* midi_status(): all 0 when no song plays. */
+typedef struct {
+    uint32_t length_ms;  /* to the song's last event */
+    uint32_t elapsed_ms;
+    uint32_t channels;   /* bit n = MIDI channel n+1 has a note sounding */
+    uint32_t voices;     /* notes sounding (at most 24) */
+} px_midi_status_t;
+
 typedef struct px_api {
     uint32_t version; /* the firmware's PX_APP_API_VERSION */
     uint8_t *screen;
@@ -263,6 +277,16 @@ typedef struct px_api {
      * off (PX_KEY_QUIT), and the Sleep Timer and an empty battery still
      * end the app. 0 (as every app starts): ON ends it. */
     void (*on_key)(int on_is_key);
+
+    /* ----- version 4: MIDI -----
+     * Plays a Standard MIDI File (.mid, format 0 or 1, up to 128 KB) on the
+     * speaker -- the firmware's synthesizer: 24 notes at once, 16 channels,
+     * channel 10 the drums -- and returns at once, like play_async(): the
+     * app goes on, sound_playing() says when it's over and sound_stop()
+     * stops it, as with any sound. Songs live in /MIDI. 0, or
+     * PX_MIDI_*. */
+    int (*midi_play)(const char *path);
+    void (*midi_status)(px_midi_status_t *status);
 } px_api_t;
 
 #ifdef __cplusplus

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PX-42F Live Simulator</title>
+<style>
+:root {
+  --bg: #f4f4f1; --fg: #1d1f1c; --muted: #6a6d66; --rule: #d9d9d2;
+  --body: #2c2f2b; --key: #43473f; --key-fg: #f3f3ee; --key-down: #1f221d; --accent: #c4601a;
+  --panel: #fff; --lcd-off: #9ea68f;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161715; --fg: #e8e8e3; --muted: #9a9d95; --rule: #34362f; --panel: #1e201d; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
+main { display: flex; flex-wrap: wrap; gap: 24px; padding: 20px 16px; max-width: 1280px; margin: 0 auto; }
+.device { flex: 1 1 560px; max-width: 780px; background: var(--body); border-radius: 18px; padding: 20px; }
+.lcd { display: block; width: 100%; image-rendering: pixelated; background: #c5cfb2; border: 4px solid #111; border-radius: 4px; }
+.lcd.off { filter: grayscale(1) brightness(0.7); }
+.keys { display: grid; grid-template-columns: repeat(30, 1fr); gap: 8px; margin-top: 18px; }
+.k {
+  grid-column: span 6; min-height: 54px; border: 0; border-radius: 7px; padding: 6px 2px 4px;
+  background: var(--key); color: var(--key-fg); font: inherit; cursor: pointer; touch-action: none; user-select: none;
+  box-shadow: 0 3px 0 #111;
+}
+.k.narrow { grid-column: span 5; }
+.k b { display: block; font-size: 0.98rem; font-weight: 600; }
+.k span { display: block; font: 0.68rem ui-monospace, Menlo, Consolas, monospace; opacity: 0.65; }
+.k.named b { color: #f0a868; }
+.k.down { background: var(--key-down); transform: translateY(3px); box-shadow: none; }
+.side { flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bar .state { margin-left: auto; color: var(--muted); font-size: 0.9rem; }
+.state.bad { color: var(--accent); }
+button.t { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--rule); background: var(--panel); color: var(--fg); cursor: pointer; }
+button.t:hover { border-color: var(--muted); }
+button.t.on { border-color: var(--accent); color: var(--accent); }
+#log, #script {
+  margin: 0; padding: 10px; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
+  font: 0.82rem/1.35 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+#log { height: 340px; overflow-y: auto; }
+#script { width: 100%; height: 5.5em; resize: vertical; color: var(--fg); }
+.serial { display: flex; gap: 8px; }
+.serial input { flex: 1; min-width: 0; font: 0.9rem ui-monospace, Menlo, Consolas, monospace; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--rule); background: var(--panel); color: var(--fg); }
+h2 { margin: 0; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.hint { color: var(--muted); font-size: 0.85rem; margin: 0; }
+kbd { font: 0.8rem ui-monospace, Menlo, Consolas, monospace; border: 1px solid var(--rule); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<main>
+  <section class="device" aria-label="The calculator">
+    <canvas id="lcd" class="lcd" width="250" height="122"></canvas>
+    <div class="keys" id="keys"></div>
+  </section>
+
+  <section class="side">
+    <div class="bar">
+      <button class="t" id="restart" title="Rebuild the app and start it again">Restart</button>
+      <button class="t" id="shot">Save screen</button>
+      <button class="t" id="rec" title="Record the keys you press as a SIM_SCRIPT">Record</button>
+      <span class="state" id="state">connecting</span>
+    </div>
+    <p class="hint" id="sound-hint" hidden>The browser keeps sound off until you click or press a key on this page.</p>
+    <h2>Console</h2>
+    <pre id="log" aria-live="off"></pre>
+    <form class="serial" id="serial">
+      <input id="serial-text" autocomplete="off" spellcheck="false" placeholder="USB serial: text to send, then Enter">
+      <button class="t" type="submit">Send</button>
+    </form>
+    <div id="recording" hidden>
+      <h2>Recorded script</h2>
+      <textarea id="script" readonly></textarea>
+      <div class="bar"><button class="t" id="copy">Copy</button><span class="hint">Paste it after <code>SIM_SCRIPT :=</code> in the Makefile.</span></div>
+    </div>
+    <p class="hint">Click the keys, or type: digits and <kbd>.</kbd> <kbd>+</kbd> <kbd>-</kbd> <kbd>*</kbd> <kbd>/</kbd>, <kbd>Enter</kbd>, <kbd>Backspace</kbd>, arrows <kbd>&uarr;</kbd> <kbd>&darr;</kbd>, <kbd>Space</kbd> = R/S, <kbd>f</kbd> = SHIFT, <kbd>s</kbd> = &Sigma;+, <kbd>x</kbd> = XEQ, <kbd>Esc</kbd> = ON.</p>
+  </section>
+</main>
+
+<script>
+'use strict';
+const ROWS = [
+  [['Σ+', 'SIGMA'], ['1/x'], ['√x'], ['LOG'], ['LN'], ['XEQ', 'XEQ']],
+  [['STO'], ['RCL'], ['R↓'], ['SIN'], ['COS'], ['TAN']],
+  [['ENTER', 'ENTER'], ['x≷y'], ['+/−'], ['E'], ['←', 'BACKSPACE']],
+  [['▲', 'UP'], ['7'], ['8'], ['9'], ['÷']],
+  [['▼', 'DOWN'], ['4'], ['5'], ['6'], ['×']],
+  [['SHIFT', 'SHIFT'], ['1'], ['2'], ['3'], ['−']],
+  [['ON', 'quits'], ['0'], ['.'], ['R/S', 'RS'], ['+']],
+];
+const PC_KEYS = {
+  '7': 'R3C1', '8': 'R3C2', '9': 'R3C3', '4': 'R4C1', '5': 'R4C2', '6': 'R4C3', '1': 'R5C1', '2': 'R5C2',
+  '3': 'R5C3', '0': 'R6C1', '.': 'R6C2', '+': 'R6C4', '-': 'R5C4', '*': 'R4C4', '/': 'R3C4',
+  Enter: 'R2C0', Backspace: 'R2C4', ArrowUp: 'R3C0', ArrowDown: 'R4C0', ' ': 'R6C3',
+  f: 'R5C0', s: 'R0C0', x: 'R0C5', Escape: 'ON',
+};
+const INK = [27, 34, 22], PAPER = [197, 207, 178];
+
+const $ = (id) => document.getElementById(id);
+const lcd = $('lcd'), ctx = lcd.getContext('2d'), logEl = $('log'), stateEl = $('state');
+const caps = {};
+let info = null, frame = null, chain = Promise.resolve();
+
+/* The keys: named R<row>C<col>, ON for the ON key. */
+ROWS.forEach((row, r) => row.forEach(([label, note], c) => {
+  const name = r === 6 && c === 0 ? 'ON' : `R${r}C${c}`;
+  const b = document.createElement('button');
+  b.className = 'k' + (r < 2 ? ' narrow' : '') + (note && note !== 'quits' ? ' named' : '');
+  b.innerHTML = `<b></b><span>${name}</span>`;
+  b.firstChild.textContent = label;
+  b.addEventListener('pointerdown', (e) => { b.setPointerCapture(e.pointerId); press(name); });
+  b.addEventListener('pointerup', () => release(name));
+  b.addEventListener('pointercancel', () => release(name));
+  $('keys').append(b);
+  caps[name] = b;
+}));
+
+function send(path, body) {
+  chain = chain.then(() => fetch(path, { method: 'POST', body })).catch(() => {});
+}
+
+/* Recording: the gaps and the keys, as the Makefile's SIM_SCRIPT wants them. */
+let recording = null, lastKeyAt = 0;
+function record(word) {
+  const now = performance.now(), gap = Math.round((now - lastKeyAt) / 10) * 10;
+  if (gap >= 10) recording.push(String(gap));
+  recording.push(word);
+  lastKeyAt = now;
+  $('script').value = 'SIM_SCRIPT := ' + recording.join(' ') + ' shot:end';
+}
+
+const held = new Set();
+function press(name) {
+  if (held.has(name)) return;
+  held.add(name);
+  caps[name].classList.add('down');
+  send('/input', `down ${name}\n`);
+  if (recording) record(name);
+}
+function release(name) {
+  if (!held.delete(name)) return;
+  caps[name].classList.remove('down');
+  send('/input', `up ${name}\n`);
+}
+
+const byCode = {};
+const inField = (e) => /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
+addEventListener('keydown', (e) => {
+  const name = PC_KEYS[e.key];
+  if (!name || e.repeat || e.ctrlKey || e.metaKey || e.altKey || inField(e)) return;
+  e.preventDefault();
+  byCode[e.code] = name;
+  press(name);
+});
+addEventListener('keyup', (e) => {
+  if (byCode[e.code]) release(byCode[e.code]);
+  delete byCode[e.code];
+});
+addEventListener('blur', () => [...held].forEach(release));
+
+/* The screen: 1 = black, rows of stride bytes, the leftmost pixel the top bit. */
+function draw() {
+  if (!info || !frame) return;
+  const img = ctx.createImageData(info.w, info.h);
+  for (let y = 0; y < info.h; y++)
+    for (let x = 0; x < info.w; x++) {
+      const on = frame[y * info.stride + (x >> 3)] >> (7 - (x & 7)) & 1;
+      const px = on ? INK : PAPER, i = (y * info.w + x) * 4;
+      img.data.set([px[0], px[1], px[2], 255], i);
+    }
+  ctx.putImageData(img, 0, 0);
+}
+
+function addLog(text) {
+  const atEnd = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 20;
+  logEl.textContent = (logEl.textContent + text).slice(-60000);
+  if (atEnd) logEl.scrollTop = logEl.scrollHeight;
+}
+
+function show(s) {
+  const bad = s.state === 'build failed' || (s.state === 'ended' && s.code !== 0);
+  stateEl.textContent = s.state === 'ended' ? `ended (exit ${s.code})` : s.state;
+  stateEl.classList.toggle('bad', bad);
+  lcd.classList.toggle('off', s.state !== 'running');
+  if (s.state === 'building') {
+    logEl.textContent = '';
+    decoded.clear(); /* the files may have changed */
+  }
+}
+
+const events = new EventSource('/events');
+events.addEventListener('hello', (e) => {
+  info = JSON.parse(e.data);
+  lcd.width = info.w; lcd.height = info.h;
+});
+events.addEventListener('frame', (e) => {
+  frame = Uint8Array.from(atob(JSON.parse(e.data)), (c) => c.charCodeAt(0));
+  draw();
+});
+/* Sound: the simulator names a WAV file on the simulated drive (or '' to stop). */
+let audio = null, playing = null, soundSeq = 0;
+const decoded = new Map();
+function unlockSound() {
+  audio = audio || new AudioContext();
+  audio.resume().then(() => { $('sound-hint').hidden = true; });
+}
+for (const type of ['pointerdown', 'keydown']) addEventListener(type, unlockSound, true);
+
+events.addEventListener('sound', async (e) => {
+  const path = JSON.parse(e.data), mine = ++soundSeq;
+  if (playing) { try { playing.stop(); } catch {} playing = null; }
+  if (!path) return;
+  audio = audio || new AudioContext();
+  let buffer = decoded.get(path);
+  if (!buffer) {
+    try {
+      const reply = await fetch('/drive' + path.split('/').map(encodeURIComponent).join('/'));
+      buffer = await audio.decodeAudioData(await reply.arrayBuffer());
+    } catch {
+      return addLog(`[the page can't play ${path}]\n`);
+    }
+    decoded.set(path, buffer);
+  }
+  if (mine !== soundSeq) return; /* a newer sound started meanwhile */
+  const source = audio.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audio.destination);
+  source.onended = () => { if (playing === source) playing = null; };
+  source.start();
+  playing = source;
+  $('sound-hint').hidden = audio.state === 'running';
+});
+events.addEventListener('log', (e) => addLog(JSON.parse(e.data)));
+events.addEventListener('status', (e) => show(JSON.parse(e.data)));
+events.onerror = () => show({ state: 'disconnected: is make live still running?' });
+
+$('restart').onclick = () => { held.clear(); send('/restart', ''); };
+$('serial').onsubmit = (e) => {
+  e.preventDefault();
+  send('/input', `serial ${$('serial-text').value}\n`);
+  $('serial-text').value = '';
+};
+$('shot').onclick = () => lcd.toBlob((blob) => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'screen.png';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+$('rec').onclick = () => {
+  recording = recording ? null : [];
+  lastKeyAt = performance.now();
+  $('rec').classList.toggle('on', !!recording);
+  $('rec').textContent = recording ? 'Stop recording' : 'Record';
+  $('recording').hidden = false;
+  if (recording) $('script').value = '';
+};
+$('copy').onclick = () => navigator.clipboard.writeText($('script').value);
+</script>
+</body>
+</html>
