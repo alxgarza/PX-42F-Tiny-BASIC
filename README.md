@@ -68,15 +68,46 @@ Options → Terminal → Raw Mode).
 **Numbers** have 34 significant digits. `PRINT` shows them rounded to 12
 (`DIGITS n` changes that, 1–34), with `E` for very large or small ones:
 `1.5E-7`. There are 26 variables, `A` to `Z`, and one array, `@(0)` to
-`@(1023)`. Strings appear only in `PRINT` and as `INPUT`'s prompt.
-Lowercase is fine; it becomes uppercase, except inside quotes.
+`@(1023)`. **Strings** are in `A$` to `Z$` (see below). Lowercase is fine; it becomes uppercase, except inside quotes.
+
+### Strings
+
+`A$` to `Z$` are text variables, apart from the numbers (`A` and `A$` are two
+variables). They share a pool of 4096 characters; one holds up to 255. Type `$`
+in NUM (right of `=`, row 2), or from page 3 of the keyword map. `RUN` and
+`NEW` empty them.
+
+| | |
+|---|---|
+| `A$ = "HI"`, `A$ = B$ + "!"` | assignment; `+` joins (`SORRY` past 255, or when the pool is full) |
+| `INPUT A$` | the whole line typed |
+| `PRINT A$; 5; "x"` | strings and numbers in any order |
+| `IF A$ = "Q" THEN`, `<> < > <= >=` | compare two strings by character code, then length |
+| `LEN(s$)`, `ASC(s$)`, `VAL(s$)` | length; code of the first character; text as a number (0 if it isn't) |
+| `INSTR(a$, b$)` | where `b$` is in `a$` (from 1), or 0 |
+| `LEFT$(s$, n)`, `RIGHT$(s$, n)`, `MID$(s$, start, n)` | parts; `MID$` counts from 1, `n` is optional |
+| `CHR$(n)`, `STR$(x)` | the character with code 1–255; a number as text |
+| `INKEY$` | the next key pressed while the program runs, as a one-character string (or "" if none): what the key types in NUM, else its letter; ENTER 13, ← 8, ▲ 30, ▼ 31 |
+
+A string works wherever a name is wanted: `LOAD A$`, `PLAYMIDI A$`, `PLAYWAV "TONES/TONE"+STR$(N)`.
+
+### Arrays
+
+`DIM A(n)` is a list `A(0)`…`A(n)`; `DIM M(r,c)` a table `M(0,0)`…`M(r,c)`;
+`DIM S$(n)` a list of strings `S$(0)`…`S$(n)`. Any letter, several in one
+`DIM`: `DIM A(9), M(4,4), N$(20)`. An element is used like a variable, also in
+`INPUT A(I,J)`. `A`, `A()`, `A$` and `A$()` are four different things. 1024
+number elements and 512 string elements in all (`MEM` shows what is left); an
+index outside, an array not dimensioned or dimensioned twice is `HOW?`.
+`RUN` and `NEW` remove the arrays.
 
 ### Statements
 
 | Statement | Does |
 |---|---|
 | `PRINT a, b; "text"` (or `?`) | `,` moves to the next column of 8, `;` stays put; a `,` or `;` at the end keeps the line open |
-| `INPUT "prompt", A, B` | asks for numbers; without a prompt it shows `A? ` |
+| `DIM A(n)`, `DIM M(r,c)`, `DIM S$(n)` | arrays: see above |
+| `INPUT "prompt", A, B` | asks for numbers (or a line of text, for `A$`); without a prompt it shows `A? ` |
 | `LET A = 3` (or just `A = 3`) | `@(I) = 3` for the array |
 | `IF c THEN statement` / `IF c THEN 100` | if `c` is false, the rest of the line is skipped |
 | `GOTO n`, `GOSUB n`, `RETURN` | `n` can be an expression |
@@ -90,6 +121,10 @@ Lowercase is fine; it becomes uppercase, except inside quotes.
 | `LINE x1, y1, x2, y2, c` | a line |
 | `BOX x, y, w, h, c` | a filled rectangle |
 | `TONE n` | the calculator's tone 0–9, or 10 (the error sound) |
+| `PLAYMIDI "name"` | plays the song `/MIDI/name.mid` on the calculator's synthesizer and goes on at once; the music plays while the program runs, and on after it ends |
+| `STOPMIDI` | stops the song |
+| `PLAYWAV "name"` | plays `/SOUNDS/name.wav` (a `/` in the name is a folder: `"TONES/TONE3"`) and goes on at once; `HOW?` if it can't be played |
+| `STOPWAV` | stops the sound (same as `STOPMIDI`: the speaker plays one sound at a time) |
 | `WAIT ms` | pauses; R/S stops it |
 | `DEG`, `RAD` | angles in degrees or radians (the default). `RUN` starts in radians, so a program that wants degrees says `DEG` itself |
 | `DIGITS n` | significant digits `PRINT` shows (12 at `RUN`) |
@@ -105,7 +140,7 @@ lines of 31 characters under the status bar.
 | Comparisons and logic | give 1 (true) or 0 (false); any value but 0 is true |
 | `MOD` | `a MOD b` has the sign of `b`, as on the HP-42S: `-7 MOD 3` is 2 |
 | Functions | `SIN COS TAN ASN ACS ATN` · `SQR EXP LOG LOG10` · `ABS SGN INT` (`INT` rounds down) · `RND(n)`: a whole number 1–`n`; `RND(0)`: a fraction 0–1 · `PI` |
-| From the PX-42F | `KEY()`: the keys pressed during the run, one at a time in the order they were pressed, by place: 11 is the top-left key, 75 the + key; 0 when there are none. `SIZE`: bytes left for the program. |
+| From the PX-42F | `MIDI()`: 1 while a song or a WAV plays, else 0. `KEY()`: the keys pressed during the run, one at a time in the order they were pressed, by place: 11 is the top-left key, 75 the + key; 0 when there are none. `SIZE`: bytes left for the program. |
 
 ### Commands
 
@@ -117,6 +152,10 @@ lines of 31 characters under the status bar.
 | `SAVE "NAME"`, `LOAD "NAME"` | `NAME.BAS` in `/BIN/APPS/BASIC/` on the drive, plain text |
 | `FILES` | lists the saved programs |
 | `ERASE "NAME"` | deletes one |
+| `VER` | shows the PX-BASIC version |
+| `MEM` | the program space and the string pool left |
+| `HELP` (or `CMDS`) | shows the keyword map (SHIFT ▼) to read: the same eight pages of words by kind, in alphabetical order; ▲ ▼ turn the pages round and round; a word's key or ON closes it, typing nothing |
+| `EXIT` | leaves BASIC (the program is kept for next time, as ON does) |
 
 Names are up to 20 letters, digits, `_` or `-`, with or without the quotes
 (`LOAD RINGS3D`); in quotes a space is allowed too (`SAVE "My Ring"`); lower case is the same name in

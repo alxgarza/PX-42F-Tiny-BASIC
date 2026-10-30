@@ -13,7 +13,7 @@ make build/sim >/dev/null
 rm -rf "$S"; mkdir -p "$S"
 fresh() { rm -rf build/sim-drive && mkdir -p build/sim-drive && cp -R sim/drive/. build/sim-drive/; }
 fresh
-build/sim "$S/a" build/sim-drive shot:start ON shot:leave R2C4 R1C2 R1C3 shot:alpha R5C0 R2C0 shot:num R2C4 R2C4 R5C0 R2C0 R5C0 DOWN shot:kw1 DOWN shot:kw2 DOWN \
+build/sim "$S/a" build/sim-drive shot:start ON shot:leave R2C4 R1C2 R1C3 shot:alpha R5C0 R2C0 shot:num R2C4 R2C4 R5C0 R2C0 R5C0 DOWN shot:kw1 DOWN shot:kw2 DOWN shot:kw3 DOWN shot:kw4 DOWN shot:kw5 DOWN shot:kw6 DOWN shot:kw7 DOWN shot:kw8 ON \
   serial:CLS serial:10_FOR_I=1_TO_5 'serial:20_PRINT_I,SQR(I)' serial:30_NEXT serial:RUN 100 shot:run \
   serial:CLS 'serial:LOAD_"GUESS"' serial:RUN serial:50 serial:25 serial:37 200 shot:guess RS \
   'serial:LOAD_"SPIRAL"' serial:RUN 4000 shot:spiral 'serial:LOAD_"SINE"' serial:RUN 4000 shot:sine ON >/dev/null

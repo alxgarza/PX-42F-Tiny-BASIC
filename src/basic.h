@@ -29,6 +29,8 @@ int basic_line_after(int n);
  * buf needs BASIC_LINE_MAX + 8. */
 bool basic_line_get(int n, char *buf, int size);
 
+#define BASIC_VERSION "1.2"
+
 /* Bytes free for the program. */
 int basic_free(void);
 

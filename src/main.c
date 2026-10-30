@@ -35,6 +35,18 @@ int bio_key(void) {
     return console_key();
 }
 
+void bio_help(void) {
+    console_help();
+}
+
+void bio_exit(void) {
+    console_exit();
+}
+
+int bio_inkey(void) {
+    return console_inkey();
+}
+
 void bio_cls(void) {
     console_cls();
 }
@@ -61,6 +73,29 @@ void bio_box(int x, int y, int w, int h, int black) {
 void bio_tone(int tone) {
     console_flush(); /* what was printed before it, on the screen as it plays */
     px->tone(tone);
+}
+
+int bio_midi_play(const char *name) {
+    char path[PX_PATH_MAX];
+    console_flush();
+    snprintf(path, sizeof(path), "/MIDI/%s.mid", name);
+    int r = px->midi_play(path);
+    return r == 0 ? 0 : r == PX_MIDI_NOT_FOUND || r == PX_MIDI_NOT_MIDI ? BIO_MIDI_MISSING : BIO_MIDI_TOO_BIG;
+}
+
+bool bio_wav_play(const char *name) {
+    char path[PX_PATH_MAX];
+    console_flush();
+    snprintf(path, sizeof(path), "/SOUNDS/%s.wav", name);
+    return px->play_async(path) == 0;
+}
+
+void bio_midi_stop(void) {
+    px->sound_stop();
+}
+
+bool bio_midi_playing(void) {
+    return px->sound_playing() != 0;
 }
 
 bool bio_wait(int ms) {

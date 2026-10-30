@@ -38,7 +38,7 @@ def c_char_table(name):
 
 
 def keyword_pages():
-    body = re.search(r'keyword_pages\[2\]\[7\]\[6\] = \{(.*?)\n\};', console, re.S).group(1)
+    body = re.search(r'keyword_pages\[KEYWORD_PAGES\]\[7\]\[6\] = \{(.*?)\n\};', console, re.S).group(1)
     pages = []
     for page in re.findall(r'\{\s*(\{.*?\}),\s*\}', body, re.S):
         rows = re.findall(r'\{([^{}]*)\}', page)
@@ -49,13 +49,16 @@ def keyword_pages():
                 cells.append(None if tok == 'NULL' else tok[1:-1].replace('\\"', '"'))
             table.append(cells)
         pages.append(table)
-    assert len(pages) == 2 and all(len(p) == 7 for p in pages)
+    assert len(pages) == 8 and all(len(p) == 7 for p in pages)
     return pages
 
 
 ALPHA = c_char_table('abc_keys')
 NUM = c_char_table('num_keys')
 PAGES = keyword_pages()
+TITLES = re.search(r'page_titles\[KEYWORD_PAGES\] = \{(.*?)\};', console, re.S).group(1)
+TITLES = re.findall(r'"([^"]*)"', TITLES)
+assert len(TITLES) == len(PAGES)
 
 # What's printed on the calculator's keys, by place.
 PRINTED = [
@@ -244,11 +247,19 @@ KEYS_NUM
 </table></div>
 
 <h3>The keyword map</h3>
-<p>Typing <code>RETURN</code> letter by letter takes six keys. <kbd>SHIFT</kbd> <kbd>&#9660;</kbd> shows a map of BASIC's words laid over the keys: press a key to type its word, with the space or <code>(</code> after it. <kbd>&#9660;</kbd> again shows the second page, the functions. <kbd>&#9660;</kbd> once more, <kbd>ON</kbd> (shown as BACK), or a key with no word on it (an empty box), goes back without typing anything.</p>
-<p><code>RUN</code> is on two keys of the first page: <kbd>ENTER</kbd>'s place, with the other commands, and <kbd>R/S</kbd>'s place on the bottom row, the same key as <kbd>SHIFT</kbd> <kbd>R/S</kbd>, which runs the program without the map.</p>
+<p>Typing <code>RETURN</code> letter by letter takes six keys. <kbd>SHIFT</kbd> <kbd>&#9660;</kbd> shows a map of BASIC's words laid over the keys: press a key to type its word, with the space or <code>(</code> after it. The words are in eight pages by kind, and in alphabetical order on each page, reading along the rows. <kbd>&#9660;</kbd> shows the next page and <kbd>&#9650;</kbd> the one before (the page number is in the top right corner); the pages go round, so <kbd>&#9660;</kbd> on the last page shows the first, and <kbd>&#9650;</kbd> on the first shows the last. <kbd>ON</kbd> (shown as BACK), or a key with no word on it (an empty box), goes back without typing anything.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Page</th><th>Words</th></tr></thead>
+<tbody>
+KEYWORD_PAGES_TABLE
+</tbody>
+</table></div>
+<p><kbd>SHIFT</kbd> <kbd>R/S</kbd> runs the program without the map.</p>
 <div class="shots">
-<figure>IMG:a/kw1.png|The keyword map, statements|<figcaption>Page 1: the statements and commands.</figcaption></figure>
-<figure>IMG:a/kw2.png|The keyword map, functions|<figcaption>Page 2: the functions and operators.</figcaption></figure>
+<figure>IMG:a/kw1.png|The keyword map, statements|<figcaption>Page 1: statements.</figcaption></figure>
+<figure>IMG:a/kw2.png|The keyword map, functions|<figcaption>Page 2: functions.</figcaption></figure>
+<figure>IMG:a/kw3.png|The keyword map, strings|<figcaption>Page 3: strings.</figcaption></figure>
+<figure>IMG:a/kw7.png|The keyword map, system|<figcaption>Page 7: system.</figcaption></figure>
 </div>
 
 <h3>Typing from a computer</h3>
@@ -332,6 +343,7 @@ KEYS_NUM
 <ul>
   <li><strong>Variables:</strong> 26, <code>A</code> to <code>Z</code>, one letter each. They start at 0, and <code>RUN</code> sets them to 0.</li>
   <li><strong>The array:</strong> <code>@(0)</code> to <code>@(1023)</code>, for lists and tables: <code>@(I)=I*I</code>.</li>
+  <li><strong>Your own arrays:</strong> <code>DIM</code> makes lists and tables with one or two indices, named by a letter: <code>DIM A(10)</code>, <code>DIM M(5,5)</code>. See <a href="#dim">Arrays</a> below.</li>
 </ul>
 
 <!-- ============================================================ -->
@@ -364,9 +376,53 @@ KEYS_NUM
 <tr><td><code>RND(n)</code></td><td>a random whole number from 1 to n. <code>RND(0)</code>: a random fraction from 0 to 1.</td></tr>
 <tr><td><code>PI</code></td><td>&pi; to 34 digits</td></tr>
 <tr><td><code>KEY()</code></td><td>a key pressed while the program runs (<a href="#screen">section 8</a>)</td></tr>
+<tr><td><code>MIDI()</code></td><td>1 while a song or a WAV plays, otherwise 0</td></tr>
 <tr><td><code>SIZE</code></td><td>bytes left for the program</td></tr>
 </tbody>
 </table></div>
+
+<h3 id="dim">Arrays: DIM</h3>
+<p><code>DIM A(n)</code> makes a list of numbers, <code>A(0)</code> to <code>A(n)</code>. <code>DIM M(r,c)</code> makes a table: <code>M(0,0)</code> to <code>M(r,c)</code>, so <code>DIM M(2,3)</code> has 3 rows of 4. <code>DIM S$(n)</code> makes a list of strings, <code>S$(0)</code> to <code>S$(n)</code>. Several can be made in one statement: <code>DIM A(9), M(4,4), N$(20)</code>.</p>
+<pre><code>10 DIM M(2,2), N$(2)
+20 FOR I=0 TO 2:FOR J=0 TO 2
+30 M(I,J)=I*3+J
+40 NEXT J:NEXT I
+50 N$(0)="ONE":N$(1)="TWO"
+60 PRINT M(1,2);" ";N$(1)</code></pre>
+<ul>
+  <li>An element is used like a variable: in expressions (<code>A(I)*2</code>), on the left of <code>=</code>, in <code>INPUT A(I,J)</code> and <code>INPUT S$(I)</code>. The index can be any expression, <code>A(A(1)+1)</code> too.</li>
+  <li>A letter names a number array and a string array, apart from the plain variable: <code>A</code>, <code>A(3)</code>, <code>A$</code> and <code>A$(3)</code> are four different things.</li>
+  <li>The number arrays share room for 1,024 elements, with 16 bytes each; the string arrays share 512 elements, whose text is in the strings' pool. Elements start at 0 and empty. Too many gives <code>SORRY?</code>; <code>MEM</code> shows what is left.</li>
+  <li>An index outside the array, an array that was never dimensioned, or <code>DIM</code> of a name twice gives <code>HOW?</code>. The wrong number of indices gives <code>WHAT?</code>. <code>RUN</code> and <code>NEW</code> remove all the arrays, so a program dimensions them in its first lines.</li>
+</ul>
+
+<h3 id="strings">Strings</h3>
+<p>Text is kept in <strong>string variables</strong>, <code>A$</code> to <code>Z$</code> (the name, then a <code>$</code>). They are separate from the numbers: <code>A</code> and <code>A$</code> are two variables. Type the <code>$</code> on its key in NUM (the one <kbd>STO</kbd> has above it, row 2 right of <code>=</code>), or from the third page of the keyword map. All the strings share one pool of 4,096 characters; one string can be up to 255 characters long, and a variable that was never set is empty. <code>RUN</code> and <code>NEW</code> empty them all.</p>
+<pre><code>10 A$="HELLO"
+20 B$=A$+", WORLD"
+30 PRINT B$;" HAS ";LEN(B$);" LETTERS"
+40 IF LEFT$(B$,1)="H" THEN PRINT "STARTS WITH H"
+50 INPUT "YOUR NAME";N$
+60 PRINT "HI ";N$</code></pre>
+<ul>
+  <li><code>A$="text"</code>, <code>A$=B$+C$</code>: <code>+</code> joins strings. <code>LET</code> is optional. Text is kept as typed, lowercase too. <code>PRINT</code> takes strings and numbers in any order.</li>
+  <li><code>INPUT A$</code> takes the whole line typed. With no prompt it shows <code>A$? </code>.</li>
+  <li><code>IF A$="X"</code>, and <code>&lt;&gt; &lt; &gt; &lt;= &gt;=</code>: strings compare by their character codes, then by length. Both sides must be strings. The answer is 1 or 0, as with numbers.</li>
+  <li>An answer longer than 255 characters, or strings that together would not fit the pool, give <code>SORRY?</code>; the variable keeps its old value.</li>
+</ul>
+<div class="table-wrap"><table>
+<thead><tr><th>Function</th><th>Gives</th></tr></thead>
+<tbody>
+<tr><td><code>LEN(s$)</code></td><td>the number of characters</td></tr>
+<tr><td><code>LEFT$(s$,n)</code> <code>RIGHT$(s$,n)</code></td><td>the first or last <code>n</code> characters (all of them if there are fewer)</td></tr>
+<tr><td><code>MID$(s$,start,n)</code></td><td><code>n</code> characters from <code>start</code>, counting from 1; without <code>n</code>, to the end. <code>start</code> 0 is <code>HOW?</code></td></tr>
+<tr><td><code>CHR$(n)</code> <code>ASC(s$)</code></td><td>the character with code 1 to 255, and the code of a string's first character</td></tr>
+<tr><td><code>STR$(x)</code> <code>VAL(s$)</code></td><td>a number as text, as <code>PRINT</code> shows it, and text as a number (0 if it isn't one)</td></tr>
+<tr><td><code>INSTR(a$,b$)</code></td><td>where <code>b$</code> first appears in <code>a$</code>, counting from 1; 0 if it doesn't</td></tr>
+<tr><td><code>INKEY$</code></td><td>the next key pressed while the program runs, as a one-character string, or an empty string if there was none. Digit and operator keys give what they type in NUM; the other keys give their letter; <kbd>ENTER</kbd>, <kbd>&larr;</kbd>, <kbd>&#9650;</kbd> and <kbd>&#9660;</kbd> give <code>CHR$(13)</code>, <code>CHR$(8)</code>, <code>CHR$(30)</code> and <code>CHR$(31)</code>. <code>KEY()</code> gives the key's place instead.</td></tr>
+</tbody>
+</table></div>
+<p>A string can be given wherever a name is wanted: <code>LOAD A$</code>, <code>SAVE "X"+A$</code>, <code>PLAYMIDI A$</code>, <code>PLAYWAV "TONES/TONE"+STR$(N)</code>.</p>
 
 <!-- ============================================================ -->
 <h2 id="statements">7. Statements</h2>
@@ -375,7 +431,8 @@ KEYS_NUM
 <thead><tr><th>Statement</th><th>Does</th><th>Example</th></tr></thead>
 <tbody>
 <tr><td><code>PRINT</code> or <code>?</code></td><td>Shows numbers and "text". <code>;</code> between items keeps them together, <code>,</code> moves to the next column of 8. A <code>;</code> or <code>,</code> at the end keeps the line open for the next PRINT.</td><td><code>PRINT "X=";X,"Y=";Y</code></td></tr>
-<tr><td><code>INPUT</code></td><td>Asks for numbers. Without a prompt it shows the variable's name: <code>R? </code>. Something that isn't a number gets <code>HOW?</code> and the question again.</td><td><code>INPUT "RADIUS? ",R</code></td></tr>
+<tr><td><code>DIM</code></td><td>Makes number arrays (<code>DIM A(10)</code>, <code>DIM M(5,5)</code>) and string arrays (<code>DIM N$(20)</code>); see <a href="#dim">Arrays</a>.</td><td><code>DIM M(2,3), N$(9)</code></td></tr>
+<tr><td><code>INPUT</code></td><td>Asks for numbers, or for a line of text into a string variable (<code>INPUT A$</code>). Without a prompt it shows the variable's name: <code>R? </code>. Something that isn't a number gets <code>HOW?</code> and the question again.</td><td><code>INPUT "RADIUS? ",R</code></td></tr>
 <tr><td><code>LET</code></td><td>Gives a variable a value. <code>LET</code> can be left out.</td><td><code>X=X+1</code>, <code>@(I)=0</code></td></tr>
 <tr><td><code>IF</code> &hellip; <code>THEN</code></td><td>If the condition is true (not 0), does the rest of the line; if false, skips it, including statements after <code>:</code>. <code>THEN 100</code> goes to line 100.</td><td><code>IF X&gt;9 THEN PRINT "BIG":X=0</code></td></tr>
 <tr><td><code>GOTO</code></td><td>Goes to a line. The number can be an expression.</td><td><code>GOTO 100+10*K</code></td></tr>
@@ -385,8 +442,12 @@ KEYS_NUM
 <tr><td><code>REM</code></td><td>A note: the rest of the line is ignored.</td><td><code>REM DRAW THE AXES</code></td></tr>
 <tr><td><code>DEG</code>, <code>RAD</code></td><td>Angles in degrees, or radians (the default). <code>RUN</code> starts in radians, so a program that wants degrees says <code>DEG</code> itself.</td><td><code>DEG:PRINT SIN(30)</code></td></tr>
 <tr><td><code>DIGITS</code></td><td>Digits PRINT shows, 1 to 34; 12 at first, and again at each <code>RUN</code>.</td><td><code>DIGITS 34</code></td></tr>
-<tr><td><code>CLS</code>, <code>AT</code>, <code>PSET</code>, <code>LINE</code>, <code>BOX</code>, <code>TONE</code>, <code>WAIT</code></td><td colspan="2">The screen, sound and time: <a href="#screen">section 8</a>.</td></tr>
+<tr><td><code>CLS</code>, <code>AT</code>, <code>PSET</code>, <code>LINE</code>, <code>BOX</code>, <code>TONE</code>, <code>PLAYMIDI</code>, <code>STOPMIDI</code>, <code>PLAYWAV</code>, <code>STOPWAV</code>, <code>WAIT</code></td><td colspan="2">The screen, sound and time: <a href="#screen">section 8</a>.</td></tr>
 <tr><td><code>SAVE</code>, <code>LOAD</code>, <code>FILES</code>, <code>ERASE</code></td><td colspan="2">Files: <a href="#files">section 9</a>.</td></tr>
+<tr><td><code>VER</code></td><td>Shows the PX-BASIC version.</td><td><code>VER</code></td></tr>
+<tr><td><code>MEM</code></td><td>How much is left of the program space and of the string pool. (<code>SIZE</code> is the program space alone, as a number.)</td><td><code>MEM</code></td></tr>
+<tr><td><code>HELP</code> (or <code>CMDS</code>)</td><td>Shows the keyword map (below) to read, without typing anything: every word BASIC knows, in the same eight pages. <kbd>&#9650;</kbd> and <kbd>&#9660;</kbd> turn the pages, round and round; <kbd>ON</kbd> or any key with a word on it closes it and brings back the prompt.</td><td><code>HELP</code></td></tr>
+<tr><td><code>EXIT</code></td><td>Leaves BASIC for the calculator's menu, as <kbd>ON</kbd> does, but without asking. The program is kept for next time.</td><td><code>EXIT</code></td></tr>
 </tbody>
 </table></div>
 
@@ -415,6 +476,11 @@ KEYS_NUM
 <h3>Sound and time</h3>
 <ul>
   <li><code>TONE n</code> plays the calculator's tone <code>n</code>, 0 (low) to 9 (high), or 10 for the error sound. The program waits until it has played.</li>
+  <li><code>PLAYMIDI "name"</code> plays the song <code>/MIDI/name.mid</code> from the calculator's drive (the same songs as the MIDI Player app) and goes on at once: the music plays in the background while the program draws, reads keys or waits. The song keeps playing after the program ends, until it finishes, <code>STOPMIDI</code> stops it, or you leave BASIC. The name is as it is on the drive, in quotes (or without quotes if it has no spaces); up to 28 characters. A song that isn't there, or isn't a MIDI file the synthesizer can play, gives <code>HOW?</code>; one over 128 KB gives <code>SORRY</code>.</li>
+  <li><code>STOPMIDI</code> stops the song.</li>
+  <li><code>PLAYWAV "name"</code> plays the WAV file <code>/SOUNDS/name.wav</code> on the calculator's drive and goes on at once. A <code>/</code> in the name is a folder: <code>PLAYWAV "TONES/TONE3"</code>. A file that isn't there or can't be played gives <code>HOW?</code>. The speaker plays one sound at a time, so a new <code>PLAYWAV</code>, <code>PLAYMIDI</code> or <code>TONE</code> replaces the one playing.</li>
+  <li><code>STOPWAV</code> stops the sound; it does the same as <code>STOPMIDI</code>.</li>
+  <li><code>MIDI()</code> is 1 while a song (or a WAV) is playing and 0 when it isn't, so a program can wait for the end: <code>WAIT 100</code> in a loop while <code>MIDI()</code> is 1.</li>
   <li><code>WAIT ms</code> pauses that many milliseconds; <kbd>R/S</kbd> still stops the program during it.</li>
 </ul>
 
@@ -477,6 +543,9 @@ KEYS_CODES
 <figure>IMG:a/guess.png|A game of guessing a number|<figcaption>GUESS.</figcaption></figure>
 <h3>SPIRAL</h3>
 <pre><code>LIST:SPIRAL</code></pre>
+<h3>JUKEBOX</h3>
+<p>Plays <code>/MIDI/Canon.mid</code> (put a song of that name there, or change the name in line 50) and stops when you press a key.</p>
+<pre><code>LIST:JUKEBOX</code></pre>
 <h3>SINE</h3>
 <pre><code>LIST:SINE</code></pre>
 
@@ -489,9 +558,10 @@ KEYS_CODES
 <tr><td>A line</td><td>80 characters</td></tr>
 <tr><td>Line numbers</td><td>1 to 32767</td></tr>
 <tr><td>Variables</td><td>26, A to Z, and the array <code>@(0)</code> to <code>@(1023)</code></td></tr>
+<tr><td>DIM arrays</td><td>one or two indices, indices from 0; 1,024 number elements in all, and 512 string elements (one index)</td></tr>
 <tr><td>Numbers</td><td>34 significant digits, exponents to &plusmn;6144</td></tr>
 <tr><td>GOSUB and FOR</td><td>32 deep each</td></tr>
-<tr><td>Text</td><td>numbers only; strings appear in PRINT and as INPUT's prompt</td></tr>
+<tr><td>Text</td><td>strings <code>A$</code> to <code>Z$</code>: 255 characters each, 4,096 in all</td></tr>
 </tbody>
 </table></div>
 
@@ -499,10 +569,10 @@ KEYS_CODES
 <h2 id="reference">13. Quick reference</h2>
 <div class="table-wrap"><table class="ref">
 <tbody>
-<tr><th>Commands</th><td><code>RUN LIST NEW SAVE LOAD FILES ERASE</code></td></tr>
-<tr><th>Statements</th><td><code>PRINT ? INPUT LET IF THEN GOTO GOSUB RETURN FOR TO STEP NEXT END STOP REM</code></td></tr>
-<tr><th>The calculator</th><td><code>CLS AT PSET LINE BOX TONE WAIT DEG RAD DIGITS</code></td></tr>
-<tr><th>Functions</th><td><code>SIN COS TAN ASN ACS ATN SQR EXP LOG LOG10 ABS SGN INT RND PI KEY SIZE</code></td></tr>
+<tr><th>Commands</th><td><code>RUN LIST NEW SAVE LOAD FILES ERASE VER MEM HELP CMDS EXIT</code></td></tr>
+<tr><th>Statements</th><td><code>DIM PRINT ? INPUT LET IF THEN GOTO GOSUB RETURN FOR TO STEP NEXT END STOP REM</code></td></tr>
+<tr><th>The calculator</th><td><code>CLS AT PSET LINE BOX TONE PLAYMIDI STOPMIDI PLAYWAV STOPWAV WAIT DEG RAD DIGITS</code></td></tr>
+<tr><th>Functions</th><td><code>SIN COS TAN ASN ACS ATN SQR EXP LOG LOG10 ABS SGN INT RND PI KEY MIDI SIZE LEN ASC VAL INSTR LEFT$ RIGHT$ MID$ CHR$ STR$ INKEY$</code></td></tr>
 <tr><th>Operators</th><td><code>^ * / MOD + - = &lt;&gt; &lt; &gt; &lt;= &gt;= NOT AND OR</code></td></tr>
 <tr><th>Keys</th><td><kbd>SHIFT</kbd> <kbd>ENTER</kbd> ALPHA/NUM &middot; <kbd>SHIFT</kbd> other mode once &middot; <kbd>&#9650;</kbd> <kbd>&#9660;</kbd> program editor, or move in a line &middot; <kbd>SHIFT</kbd> <kbd>&#9650;</kbd> history &middot; <kbd>SHIFT</kbd> <kbd>&#9660;</kbd> keywords &middot; <kbd>&larr;</kbd> delete &middot; <kbd>R/S</kbd> stop &middot; <kbd>SHIFT</kbd> <kbd>R/S</kbd> RUN &middot; <kbd>ON</kbd> stop, or leave (asks)</td></tr>
 </tbody>
@@ -518,6 +588,11 @@ KEYS_CODES
 page = page.replace('STYLE', style.replace('</style>', extra_css + '</style>'))
 page = page.replace('KEYS_ALPHA', keyboard(ALPHA, label='The keys in ALPHA mode'))
 page = page.replace('KEYS_NUM', keyboard(NUM, label='The keys in NUM mode'))
+rows = []
+for i, (title, grid) in enumerate(zip(TITLES, PAGES)):
+    words = [w.strip() for r in grid for w in r if w]
+    rows.append('<tr><td>%d. %s</td><td><code>%s</code></td></tr>' % (i + 1, html.escape(title.title()), html.escape('  '.join(words))))
+page = page.replace('KEYWORD_PAGES_TABLE', '\n'.join(rows))
 page = page.replace('KEYS_CODES', keyboard(codes=True, label="Each key's KEY() number"))
 page = re.sub(r'LIST:([A-Z]+)', lambda m: listing(m.group(1)), page)
 page = re.sub(r'IMG:([^|]+)\|([^|]+)\|', lambda m: img(m.group(1), m.group(2)), page)

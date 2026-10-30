@@ -41,6 +41,15 @@ bool console_wait(int ms);
 /* KEY(): the next key pressed while running, 11 (top left) to 75 (+), or
  * 0. */
 int console_key(void);
+/* INKEY$: the next key as the character it types, or 0. */
+int console_inkey(void);
+
+/* HELP: the keyword map (SHIFT down) to read: the up and down arrows turn
+ * its pages, any word's key or ON closes it, and nothing is typed. */
+void console_help(void);
+
+/* EXIT: as if ON had been confirmed. */
+void console_exit(void);
 
 /* ON was pressed (or the Sleep Timer ran out): the app is to end. */
 bool console_quit(void);

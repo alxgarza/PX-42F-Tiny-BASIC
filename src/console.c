@@ -57,7 +57,7 @@ static const char abc_keys[7][6] = {
 };
 static const char num_keys[7][6] = {
         {'(', ')', '"', ',', ';', ':'},
-        {'<', '>', '=', '@', '\'', '?'},
+        {'<', '>', '=', '@', '$', '?'},
         {0, '^', '#', 'E', 0, 0},
         {0, '7', '8', '9', '/', 0},
         {0, '4', '5', '6', '*', 0},
@@ -75,25 +75,80 @@ static const char num_keys[7][6] = {
 static char history[HISTORY][LINE_MAX + 1];
 static int history_count, history_newest;
 
-/* The keyword map (SHIFT down): two pages, by place. A keyword is
+/* The keyword map (SHIFT down): pages by kind, in alphabetical order, by place. A keyword is
  * typed as it is here; its label is the same without a trailing space or
  * quote. */
-static const char *const keyword_pages[2][7][6] = {
+#define KEYWORD_PAGES 8
+static const char *const page_titles[KEYWORD_PAGES] = {"STATEMENTS", "FUNCTIONS", "STRINGS", "INPUT / OUTPUT", "GRAPHICS", "SOUND", "SYSTEM", "OPERATORS"};
+static const char *const keyword_pages[KEYWORD_PAGES][7][6] = {
         {
-                {"PRINT ", "INPUT ", "IF ", "THEN ", "GOTO ", "GOSUB "},
-                {"FOR ", "TO ", "STEP ", "NEXT ", "RETURN", "END"},
-                {"RUN", "LET ", "REM ", "CLS", "LIST", NULL},
-                {"SAVE ", "LOAD ", "FILES", "NEW", "ERASE ", NULL},
-                {"AT ", "PSET ", "LINE ", "BOX ", "TONE ", NULL},
-                {"WAIT ", "DEG", "RAD", "DIGITS ", "STOP", NULL},
-                /* the last row: R/S's place has RUN, as SHIFT R/S does */
-                {NULL, NULL, NULL, "RUN", NULL, NULL},
+                {"DIM ", "END", "FOR ", "GOSUB ", "GOTO ", "IF "},
+                {"INPUT ", "LET ", "NEXT ", "PRINT ", "REM ", "RETURN"},
+                {"STEP ", "STOP", "THEN ", "TO ", NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
         },
         {
-                {"SIN(", "COS(", "TAN(", "ASN(", "ACS(", "ATN("},
-                {"SQR(", "EXP(", "LOG(", "LOG10(", "ABS(", "SGN("},
-                {"INT(", "RND(", "PI", "KEY()", "SIZE", NULL},
-                {"AND ", "OR ", "NOT ", "MOD ", "@(", NULL},
+                {"ABS(", "ACS(", "ASN(", "ATN(", "COS(", "EXP("},
+                {"INT(", "LOG(", "LOG10(", "PI", "RND(", "SGN("},
+                {"SIN(", "SQR(", "TAN(", NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+        },
+        {
+                {"$", "ASC(", "CHR$(", "INKEY$", "INSTR(", "LEFT$("},
+                {"LEN(", "MID$(", "RIGHT$(", "STR$(", "VAL(", NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+        },
+        {
+                {"?", "AT ", "INKEY$", "INPUT ", "KEY()", "PRINT "},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+        },
+        {
+                {"BOX ", "CLS", "LINE ", "PSET ", NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+        },
+        {
+                {"MIDI()", "PLAYMIDI ", "PLAYWAV ", "STOPMIDI", "STOPWAV", "TONE "},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+        },
+        {
+                {"CMDS", "DEG", "DIGITS ", "ERASE ", "EXIT", "FILES"},
+                {"HELP", "LIST", "LOAD ", "MEM", "NEW", "RAD"},
+                {"RUN", "SAVE ", "SIZE", "VER", "WAIT ", NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+        },
+        {
+                {"@(", "AND ", "MOD ", "NOT ", "OR ", NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
+                {NULL, NULL, NULL, NULL, NULL, NULL},
                 {NULL, NULL, NULL, NULL, NULL, NULL},
                 {NULL, NULL, NULL, NULL, NULL, NULL},
                 {NULL, NULL, NULL, NULL, NULL, NULL},
@@ -197,6 +252,10 @@ void console_flush(void) {
     }
 }
 
+void console_exit(void) {
+    quit = true;
+}
+
 bool console_quit(void) {
     return quit;
 }
@@ -220,8 +279,9 @@ static void key_box(int r, int c, int *x, int *w) {
 static void draw_keyword_page(int page) {
     px->clear();
     px->fill(0, 0, PX_SCREEN_W, 12, 1);
-    px->text(2, 0, page == 0 ? "STATEMENTS" : "FUNCTIONS", PX_FONT_SMALL, 1);
-    const char *hint = page == 0 ? "\x0e:more" : "\x0e:back";
+    px->text(2, 0, page_titles[page], PX_FONT_SMALL, 1);
+    char hint[24];
+    snprintf(hint, sizeof(hint), "^\x0e:page %d/%d", page + 1, KEYWORD_PAGES);
     px->text(PX_SCREEN_W - 2 - px->text_width(hint, PX_FONT_SMALL), 0, hint, PX_FONT_SMALL, 1);
     /* Every key, as the keyboard has them: those with no keyword as empty
      * outlines, ON as BACK (it closes the map, as they do). */
@@ -253,8 +313,8 @@ static void draw_keyword_page(int page) {
     px->show();
 }
 
-/* The down arrow: the keyword map, a page at a time (the arrow again: the
- * next; after the last, back). The keyword chosen, or NULL: a key with
+/* The down arrow: the keyword map, a page at a time (down: the next page,
+ * up: the page before, round and round). The keyword chosen, or NULL: a key with
  * none (ON among them) cancels. */
 static const char *choose_keyword(void) {
     static uint8_t saved[PX_SCREEN_H * PX_SCREEN_STRIDE];
@@ -271,8 +331,12 @@ static const char *choose_keyword(void) {
         if (k < 0 || (k & PX_KEY_RELEASED))
             continue;
         if (k == KEY_DOWN) {
-            if (++page == 2)
-                break;
+            page = (page + 1) % KEYWORD_PAGES; /* after the last, the first */
+            draw_keyword_page(page);
+            continue;
+        }
+        if (k == KEY_UP) {
+            page = (page + KEYWORD_PAGES - 1) % KEYWORD_PAGES; /* before the first, the last */
             draw_keyword_page(page);
             continue;
         }
@@ -282,6 +346,11 @@ static const char *choose_keyword(void) {
     memcpy(px->screen, saved, sizeof(saved));
     dirty = true;
     return chosen;
+}
+
+/* HELP: the same map, to read: whatever key is pressed closes it. */
+void console_help(void) {
+    choose_keyword();
 }
 
 /* ===================== typing a line ===================== */
@@ -886,6 +955,35 @@ bool console_wait(int ms) {
         if (look((int) left))
             return false;
     }
+}
+
+/* The key at place k (as console_key() gives it) as a character: what it
+ * types in NUM, else its letter; ENTER, <-, up and down as 13, 8, 30, 31;
+ * 0 for the rest (SHIFT). */
+static int key_char(int k) {
+    int r = k / 10 - 1, c = k % 10 - 1;
+    if (r < 0 || r > 6 || c < 0 || c > 5)
+        return 0;
+    if (num_keys[r][c])
+        return num_keys[r][c];
+    if (abc_keys[r][c])
+        return abc_keys[r][c];
+    if (r == 2 && c == 0)
+        return 13;
+    if (r == 2 && c == 4)
+        return 8;
+    if (r == 3 && c == 0)
+        return 30;
+    if (r == 4 && c == 0)
+        return 31;
+    return 0;
+}
+
+int console_inkey(void) {
+    int k, ch = 0;
+    while (ch == 0 && (k = console_key()) != 0)
+        ch = key_char(k);
+    return ch;
 }
 
 int console_key(void) {

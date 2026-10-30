@@ -70,8 +70,18 @@ run "SHIFT R/S runs it in place of what's typed" serial:10_PRINT_8 100 R0C0 R0C1
 has '8'
 lacks 'WHAT?'
 
-run "RUN on R/S's place in the keyword map" serial:10_PRINT_9 100 R5C0 DOWN R6C3 ENTER 100 QUIT
+run "RUN from the System page of the keyword map" serial:10_PRINT_9 100 R5C0 DOWN DOWN DOWN DOWN DOWN DOWN DOWN R2C0 ENTER 100 QUIT
 has '9'
+
+run "HELP shows the keyword map, ▲ ▼ turn its pages, a word's key closes it" serial:HELP 500 shot:a UP DOWN DOWN shot:b R0C0 100 serial:PRINT_5 300 QUIT
+has '5'
+lacks '>END '
+
+run "UP on the first page of the keyword map goes round to the last (AND)" R5C0 DOWN UP R0C1 ENTER 100 QUIT
+has '>AND '
+
+run "DOWN on the last page of the keyword map goes round to the first (FOR)" R5C0 DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN R0C2 ENTER 100 QUIT
+has '>FOR '
 
 # AUTOSAVE.BAS: the program as it is when BASIC is left, for the next start
 run "AUTOSAVE after typing" serial:10_PRINT_1 100 ON ENTER 100

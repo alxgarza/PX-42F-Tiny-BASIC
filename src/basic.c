@@ -80,7 +80,33 @@ bool basic_line_get(int n, char *buf, int size) {
 typedef px_dec_t num_t;
 
 static num_t vars[26];
+/* The string variables A$ to Z$: see "strings" below. */
+#define STR_MAX  255
+#define STR_POOL 4096
+static char pool[STR_POOL];
+static int pool_used;
+/* A string's place in the pool. A$ to Z$ are svar[0..25]; the elements of
+ * the string arrays (DIM A$(n)) follow, from svar[26], handed out in order. */
+#define SD_POOL 512
+static struct {
+    int16_t at;
+    uint8_t len;
+} svar[26 + SD_POOL];
+static int sd_used;
+static struct {
+    uint16_t at, n; /* the first element's place in svar after the 26; how many */
+    bool defined;
+} sarr[26];
 static num_t array[BASIC_ARRAY_MAX];
+/* The arrays of DIM A(n) or DIM A(r,c): elements from one pool; indices run
+ * from 0 to the size given. */
+#define DIM_POOL 1024
+static num_t dim_pool[DIM_POOL];
+static int dim_used;
+static struct {
+    uint16_t at, d1, d2; /* where its elements start; how many of each index */
+    uint8_t nd;          /* 0: not dimensioned; 1 or 2 indices */
+} narr[26];
 static int print_digits = 12; /* DIGITS: significant digits PRINT shows */
 static bool degrees;          /* DEG / RAD */
 
@@ -343,6 +369,11 @@ static num_t number(void) {
 /* ===================== expressions ===================== */
 
 static num_t expr(void);
+static int32_t int_expr(void);
+static int str_expr(char *buf);
+static int dim_element(int a);
+static int str_cmp(const char *a, int la, const char *b, int lb);
+static bool at_string(void);
 
 static num_t in_parens(void) {
     expect('(');
@@ -391,6 +422,47 @@ static num_t factor(void) {
             return functions[i].angle == 2 ? angle_out(r) : r;
         }
     }
+    if (is_word("LEN")) {
+        char s[STR_MAX + 1];
+        expect('(');
+        int n = str_expr(s);
+        expect(')');
+        return num_int(n);
+    }
+    if (is_word("ASC")) {
+        char s[STR_MAX + 1];
+        expect('(');
+        int n = str_expr(s);
+        expect(')');
+        if (n == 0)
+            fail(E_HOW);
+        return num_int((unsigned char) s[0]);
+    }
+    if (is_word("VAL")) {
+        char s[STR_MAX + 1];
+        expect('(');
+        str_expr(s);
+        expect(')');
+        num_t v = num_int(0); /* not a number: 0 */
+        char *p = s;
+        while (*p == ' ')
+            p++;
+        if (px->dec_from_string(&v, p) != 0 || px->dec_class(&v) != PX_DEC_FINITE)
+            v = num_int(0);
+        return v;
+    }
+    if (is_word("INSTR")) {
+        char a[STR_MAX + 1], b[STR_MAX + 1];
+        expect('(');
+        int la = str_expr(a);
+        expect(',');
+        int lb = str_expr(b);
+        expect(')');
+        for (int i = 0; lb > 0 && i + lb <= la; i++)
+            if (memcmp(a + i, b, (size_t) lb) == 0)
+                return num_int(i + 1);
+        return num_int(0);
+    }
     if (is_word("SGN")) {
         int c = cmp(in_parens(), num_int(0));
         return num_int(c);
@@ -412,12 +484,22 @@ static num_t factor(void) {
             expect(')');
         return num_int(bio_key());
     }
+    if (is_word("MIDI")) {
+        if (is_char('('))
+            expect(')');
+        return num_int(bio_midi_playing());
+    }
     if (is_word("SIZE"))
         return num_int(basic_free());
     if (is_char('@'))
         return array[array_index()];
-    if (at_letter())
+    if (at_letter()) {
+        if (pc + 1 < end && pc[1] == '(') { /* an element of a DIM array */
+            int a = *pc++ - 'A';
+            return dim_pool[dim_element(a)];
+        }
         return vars[*pc++ - 'A'];
+    }
     fail(E_WHAT);
     return num_int(0);
 }
@@ -461,6 +543,27 @@ static num_t sum(void) {
 }
 
 static num_t relation(void) {
+    if (at_string()) { /* strings on both sides */
+        char a[STR_MAX + 1], b[STR_MAX + 1];
+        int la = str_expr(a), op = 0;
+        if (is_word("<="))
+            op = 1;
+        else if (is_word(">="))
+            op = 2;
+        else if (is_word("<>"))
+            op = 3;
+        else if (is_char('<'))
+            op = 4;
+        else if (is_char('>'))
+            op = 5;
+        else if (is_char('='))
+            op = 6;
+        else
+            fail(E_WHAT);
+        int lb = str_expr(b);
+        int c = str_cmp(a, la, b, lb);
+        return truth(op == 1 ? c <= 0 : op == 2 ? c >= 0 : op == 3 ? c != 0 : op == 4 ? c < 0 : op == 5 ? c > 0 : c == 0);
+    }
     num_t a = sum();
     if (is_word("<="))
         return truth(cmp(a, sum()) <= 0);
@@ -505,6 +608,188 @@ static int32_t int_expr(void) {
     return to_int(expr());
 }
 
+/* ===================== strings ===================== */
+
+/* A$ to Z$ share one pool of text: each holds where its text starts and how
+ * long it is. A new value goes at the end of the pool; when that is full
+ * the live strings are packed together first. Values being worked on are
+ * copied into buffers (STR_MAX characters and a 0), never kept in the pool,
+ * so A$=A$+"X" and the like need no care. */
+
+static void pack_pool(void) {
+    static int order[26 + SD_POOL];
+    int n = 0;
+    for (int i = 0; i < 26 + sd_used; i++)
+        if (svar[i].len)
+            order[n++] = i;
+    for (int i = 1; i < n; i++) { /* by where the text is: moving down never overwrites */
+        int v = order[i], j = i;
+        while (j > 0 && svar[order[j - 1]].at > svar[v].at) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = v;
+    }
+    int to = 0;
+    for (int k = 0; k < n; k++) {
+        int i = order[k];
+        memmove(pool + to, pool + svar[i].at, svar[i].len);
+        svar[i].at = (int16_t) to;
+        to += svar[i].len;
+    }
+    pool_used = to;
+}
+
+/* Variable i = text (len characters): SORRY if the strings together would
+ * not fit the pool, and then nothing changes. */
+static void svar_set(int i, const char *text, int len) {
+    int others = 0;
+    for (int k = 0; k < 26 + sd_used; k++)
+        if (k != i)
+            others += svar[k].len;
+    if (others + len > STR_POOL)
+        fail(E_SORRY);
+    svar[i].len = 0;
+    if (pool_used + len > STR_POOL)
+        pack_pool();
+    memcpy(pool + pool_used, text, (size_t) len);
+    svar[i].at = (int16_t) pool_used;
+    svar[i].len = (uint8_t) len;
+    pool_used += len;
+}
+
+/* At A$, or at a string function (LEFT$ ...): a string expression follows. */
+static bool at_string(void) {
+    static const char *const names[] = {"LEFT$", "RIGHT$", "MID$", "CHR$", "STR$", "INKEY$"};
+    skip();
+    if (pc >= end)
+        return false;
+    if (*pc == '"')
+        return true;
+    if (*pc < 'A' || *pc > 'Z')
+        return false;
+    if (pc + 1 < end && pc[1] == '$')
+        return true;
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        size_t n = strlen(names[i]);
+        if ((size_t) (end - pc) >= n && memcmp(pc, names[i], n) == 0)
+            return true;
+    }
+    return false;
+}
+
+/* At A$ ... Z$ itself (a variable to assign to or INPUT). */
+static bool at_string_var(void) {
+    return at_letter() && pc + 1 < end && pc[1] == '$';
+}
+
+/* A$ or A$(n), at the letter: its place in svar. */
+static int sd_index(void) {
+    int a = *pc - 'A';
+    pc += 2;
+    if (pc >= end || *pc != '(')
+        return a;
+    pc++;
+    int32_t i = int_expr();
+    expect(')');
+    if (!sarr[a].defined || i < 0 || i >= sarr[a].n)
+        fail(E_HOW);
+    return 26 + sarr[a].at + (int) i;
+}
+
+/* One string: "text", A$, or a function. Written to out (room characters at
+ * most: SORRY past that); returns its length. */
+static int str_primary(char *out, int room) {
+    char tmp[STR_MAX + 1];
+    int len = 0;
+    bool left;
+    skip();
+    if (pc >= end)
+        fail(E_WHAT);
+    if (*pc == '"') {
+        const char *s = string(&len);
+        if (len > room)
+            fail(E_SORRY);
+        memcpy(out, s, (size_t) len);
+    } else if (at_string_var()) {
+        int i = sd_index();
+        len = svar[i].len;
+        if (len > room)
+            fail(E_SORRY);
+        memcpy(out, pool + svar[i].at, (size_t) len);
+    } else if ((left = is_word("LEFT$")) || is_word("RIGHT$")) {
+        expect('(');
+        int have = str_expr(tmp);
+        expect(',');
+        int32_t n = int_expr();
+        expect(')');
+        if (n < 0)
+            fail(E_HOW);
+        len = n < have ? (int) n : have;
+        if (len > room)
+            fail(E_SORRY);
+        memcpy(out, tmp + (left ? 0 : have - len), (size_t) len);
+    } else if (is_word("MID$")) {
+        expect('(');
+        int have = str_expr(tmp);
+        expect(',');
+        int32_t start = int_expr(), count = INT32_MAX;
+        if (is_char(','))
+            count = int_expr();
+        expect(')');
+        if (start < 1 || count < 0)
+            fail(E_HOW);
+        if (start <= have) {
+            len = have - (int) start + 1;
+            if (count < len)
+                len = (int) count;
+        }
+        if (len > room)
+            fail(E_SORRY);
+        memcpy(out, tmp + start - 1, (size_t) len);
+    } else if (is_word("CHR$")) {
+        int32_t c = to_int(in_parens());
+        if (c < 1 || c > 255)
+            fail(E_HOW);
+        if (room < 1)
+            fail(E_SORRY);
+        out[0] = (char) c;
+        len = 1;
+    } else if (is_word("STR$")) {
+        char b[64];
+        len = format_number(b, sizeof(b), in_parens(), print_digits);
+        if (len > room)
+            fail(E_SORRY);
+        memcpy(out, b, (size_t) len);
+    } else if (is_word("INKEY$")) {
+        if (is_char('('))
+            expect(')');
+        int c = bio_inkey();
+        if (c != 0 && room >= 1) {
+            out[0] = (char) c;
+            len = 1;
+        }
+    } else {
+        fail(E_WHAT);
+    }
+    return len;
+}
+
+/* Strings joined with +: written to buf, with a 0 after; its length. */
+static int str_expr(char *buf) {
+    int len = str_primary(buf, STR_MAX);
+    while (is_char('+'))
+        len += str_primary(buf + len, STR_MAX - len);
+    buf[len] = 0;
+    return len;
+}
+
+/* Comparing two strings: <0, 0, >0, by character code and then length. */
+static int str_cmp(const char *a, int la, const char *b, int lb) {
+    int c = memcmp(a, b, (size_t) (la < lb ? la : lb));
+    return c != 0 ? c : la - lb;
+}
+
 /* ===================== output ===================== */
 
 static void out(const char *s) {
@@ -539,8 +824,16 @@ static void clear_run_state(void) {
 }
 
 static void clear_vars(void) {
-    for (int i = 0; i < 26; i++)
+    for (int i = 0; i < 26; i++) {
         vars[i] = num_int(0);
+        sarr[i].defined = false;
+        narr[i].nd = 0;
+    }
+    for (int i = 0; i < 26 + SD_POOL; i++)
+        svar[i].len = 0;
+    pool_used = 0;
+    sd_used = 0;
+    dim_used = 0;
     for (int i = 0; i < BASIC_ARRAY_MAX; i++)
         array[i] = vars[0];
 }
@@ -633,9 +926,11 @@ static void file_name(char *name) {
     int len;
     const char *s;
     skip();
-    bool quoted = pc < end && *pc == '"';
+    char text[STR_MAX + 1];
+    bool quoted = at_string(); /* "NAME", A$ ... */
     if (quoted) {
-        s = string(&len);
+        len = str_expr(text);
+        s = text;
     } else {
         s = pc;
         while (pc < end && *pc != ' ' && *pc != ':')
@@ -651,6 +946,35 @@ static void file_name(char *name) {
         if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || (c == ' ' && quoted)))
             fail(E_HOW);
         name[i] = c;
+    }
+    name[len] = 0;
+}
+
+/* A song's or sound's name for PLAYMIDI and PLAYWAV: in quotes, or bare
+ * without spaces; as typed. A sound's may have "/"s (TONES/TONE3). */
+static void song_name(char *name, bool slashes) {
+    int len;
+    const char *s;
+    char text[STR_MAX + 1];
+    if (at_string()) {
+        len = str_expr(text);
+        s = text;
+    } else {
+        s = pc;
+        while (pc < end && *pc != ' ' && *pc != ':')
+            pc++;
+        len = (int) (pc - s);
+    }
+    if (!at_end())
+        fail(E_WHAT);
+    if (len == 0 || len > BIO_MIDI_NAME_MAX)
+        fail(E_HOW);
+    for (int i = 0; i < len; i++) {
+        if ((s[i] == '/' && !slashes) || s[i] == '\\' || (unsigned char) s[i] < ' ')
+            fail(E_HOW);
+        if (s[i] == '.' && i > 0 && s[i - 1] == '.') /* no ".." out of the folder */
+            fail(E_HOW);
+        name[i] = s[i];
     }
     name[len] = 0;
 }
@@ -736,22 +1060,44 @@ static void files(void) {
 
 /* ===================== statements ===================== */
 
+/* Where a number goes: a variable, an element of @(), or of a DIM array. */
+enum { T_VAR, T_AT, T_DIM };
 typedef struct {
-    bool in_array;
+    int kind;
     int index;
 } target_t;
 
+/* A(i) or A(i,j), at the "(" after the letter: the element's place in dim_pool. */
+static int dim_element(int a) {
+    expect('(');
+    int32_t i = int_expr(), j = 0;
+    if (narr[a].nd == 2) {
+        expect(',');
+        j = int_expr();
+    }
+    expect(')');
+    if (narr[a].nd == 0 || i < 0 || i >= narr[a].d1 || j < 0 || j >= (narr[a].nd == 2 ? narr[a].d2 : 1))
+        fail(E_HOW);
+    return narr[a].at + (int) i * (narr[a].nd == 2 ? narr[a].d2 : 1) + (int) j;
+}
+
 static target_t target(void) {
     if (is_char('@'))
-        return (target_t) {true, array_index()};
+        return (target_t) {T_AT, array_index()};
     if (!at_letter())
         fail(E_WHAT);
-    return (target_t) {false, *pc++ - 'A'};
+    if (pc + 1 < end && pc[1] == '(') {
+        int a = *pc++ - 'A';
+        return (target_t) {T_DIM, dim_element(a)};
+    }
+    return (target_t) {T_VAR, *pc++ - 'A'};
 }
 
 static void assign(target_t t, num_t v) {
-    if (t.in_array)
+    if (t.kind == T_AT)
         array[t.index] = v;
+    else if (t.kind == T_DIM)
+        dim_pool[t.index] = v;
     else
         vars[t.index] = v;
 }
@@ -768,10 +1114,9 @@ static void st_print(void) {
     bool new_line = true;
     while (!at_end()) {
         new_line = true;
-        if (*pc == '"') {
-            int len;
-            const char *s = string(&len);
-            bio_out(s, len);
+        if (at_string()) {
+            char s[STR_MAX + 1];
+            bio_out(s, str_expr(s));
         } else {
             out_number(expr());
         }
@@ -812,7 +1157,13 @@ static void st_input(void) {
         }
         skip();
         const char *name = pc;
-        target_t t = target();
+        bool text = at_string_var();
+        int si = 0;
+        target_t t = {T_VAR, 0};
+        if (text)
+            si = sd_index();
+        else
+            t = target();
         int name_len = (int) (pc - name);
         char line[BASIC_LINE_MAX + 1];
         num_t v;
@@ -825,15 +1176,26 @@ static void st_input(void) {
             }
             if (bio_input(line, sizeof(line)) < 0)
                 fail(E_BREAK);
-            if (typed_number(line, &v))
+            if (text || typed_number(line, &v))
                 break;
             out("HOW?\n");
         }
-        assign(t, v);
+        if (text)
+            svar_set(si, line, (int) strlen(line));
+        else
+            assign(t, v);
     } while (is_char(','));
 }
 
 static void statement(void);
+
+/* A$ = a string. */
+static void st_assign_string(void) {
+    int i = sd_index();
+    expect('=');
+    char s[STR_MAX + 1];
+    svar_set(i, s, str_expr(s));
+}
 
 static void st_if(void) {
     bool c = is_true(expr());
@@ -850,7 +1212,7 @@ static void st_if(void) {
 
 static void st_for(void) {
     target_t t = target();
-    if (t.in_array)
+    if (t.kind != T_VAR)
         fail(E_WHAT);
     expect('=');
     vars[t.index] = expr();
@@ -899,6 +1261,65 @@ static void st_return(void) {
     if (gosub_count == 0)
         fail(E_HOW);
     go_back(gosubs[--gosub_count]);
+}
+
+/* MEM: what is left of the program's space, the strings' pool, and the
+ * places for array elements. */
+static void st_mem(void) {
+    int used = 0;
+    for (int i = 0; i < 26 + sd_used; i++)
+        used += svar[i].len;
+    char buf[64];
+    bio_out(buf, snprintf(buf, sizeof(buf), "PROGRAM %d FREE OF %d\n", basic_free(), BASIC_PROG_MAX));
+    bio_out(buf, snprintf(buf, sizeof(buf), "STRINGS %d FREE OF %d\n", STR_POOL - used, STR_POOL));
+    bio_out(buf, snprintf(buf, sizeof(buf), "ARRAYS %d FREE OF %d\n", DIM_POOL - dim_used, DIM_POOL));
+    bio_out(buf, snprintf(buf, sizeof(buf), "STRING ARRAYS %d FREE OF %d\n", SD_POOL - sd_used, SD_POOL));
+}
+
+/* DIM A(n), B(r,c), C$(n): arrays, their indices from 0 to the size given.
+ * Each needs its own letter (A() is not A, and A$() is not A$), and can
+ * be dimensioned once until RUN or NEW. */
+static void st_dim(void) {
+    do {
+        skip();
+        if (!at_letter())
+            fail(E_WHAT);
+        int a = *pc++ - 'A';
+        if (pc < end && *pc == '$') { /* a string array: one index */
+            pc++;
+            expect('(');
+            int32_t n = int_expr();
+            expect(')');
+            if (sarr[a].defined || n < 0)
+                fail(E_HOW);
+            if (n >= SD_POOL - sd_used)
+                fail(E_SORRY);
+            sarr[a].at = (uint16_t) sd_used;
+            sarr[a].n = (uint16_t) (n + 1);
+            sarr[a].defined = true;
+            for (int k = 0; k <= n; k++)
+                svar[26 + sd_used + k].len = 0;
+            sd_used += (int) n + 1;
+        } else { /* a number array: one or two */
+            expect('(');
+            int32_t r = int_expr(), c = -1;
+            if (is_char(','))
+                c = int_expr();
+            expect(')');
+            if (narr[a].nd != 0 || r < 0 || (c < 0 && c != -1))
+                fail(E_HOW);
+            int64_t size = (int64_t) (r + 1) * (c >= 0 ? c + 1 : 1);
+            if (size > DIM_POOL - dim_used)
+                fail(E_SORRY);
+            narr[a].at = (uint16_t) dim_used;
+            narr[a].d1 = (uint16_t) (r + 1);
+            narr[a].d2 = (uint16_t) (c >= 0 ? c + 1 : 1);
+            narr[a].nd = c >= 0 ? 2 : 1;
+            for (int k = 0; k < size; k++)
+                dim_pool[dim_used + k] = num_int(0);
+            dim_used += (int) size;
+        }
+    } while (is_char(','));
 }
 
 static void st_list(void) {
@@ -958,12 +1379,34 @@ static void statement(void) {
         st_for();
     } else if (is_word("NEXT")) {
         st_next();
+    } else if (is_word("DIM")) {
+        st_dim();
+    } else if (is_word("VER")) {
+        out("PX-BASIC " BASIC_VERSION "\n");
+    } else if (is_word("MEM")) {
+        st_mem();
+    } else if (is_word("HELP") || is_word("CMDS")) {
+        bio_help();
+    } else if (is_word("EXIT")) {
+        bio_exit();
+        fail(E_END);
+    } else if (is_word("PLAYWAV")) {
+        char name[BIO_MIDI_NAME_MAX + 1];
+        song_name(name, true);
+        if (!bio_wav_play(name))
+            fail(E_HOW);
+    } else if (is_word("STOPMIDI") || is_word("STOPWAV")) { /* before STOP, whose letters they start with */
+        bio_midi_stop();
     } else if (is_word("END") || is_word("STOP")) {
         fail(E_END);
     } else if (is_word("LET")) {
-        target_t t = target();
-        expect('=');
-        assign(t, expr());
+        if (at_string_var())
+            st_assign_string();
+        else {
+            target_t t = target();
+            expect('=');
+            assign(t, expr());
+        }
     } else if (is_word("CLS")) {
         bio_cls();
     } else if (is_word("AT")) {
@@ -987,6 +1430,12 @@ static void statement(void) {
         if (t < 0 || t > 10)
             fail(E_HOW);
         bio_tone((int) t);
+    } else if (is_word("PLAYMIDI")) {
+        char name[BIO_MIDI_NAME_MAX + 1];
+        song_name(name, false);
+        int r = bio_midi_play(name);
+        if (r != 0)
+            fail(r == BIO_MIDI_MISSING ? E_HOW : E_SORRY);
     } else if (is_word("WAIT")) {
         int32_t ms = int_expr();
         if (ms < 0)
@@ -1025,6 +1474,8 @@ static void statement(void) {
         file_name(name);
         if (!bio_remove(name))
             fail(E_HOW);
+    } else if (at_string_var()) {
+        st_assign_string();
     } else if (at_letter() || *pc == '@') {
         target_t t = target();
         expect('=');

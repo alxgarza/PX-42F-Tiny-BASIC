@@ -76,8 +76,14 @@ bool bio_stop(void) {
     return stop_after >= 0 && ++stop_calls > stop_after;
 }
 
+static int keys_waiting;
 int bio_key(void) {
-    return 0;
+    return keys_waiting > 0 ? (keys_waiting--, 11) : 0;
+}
+
+static bool exited;
+void bio_exit(void) {
+    exited = true;
 }
 
 void bio_cls(void) {
@@ -102,6 +108,44 @@ void bio_box(int x, int y, int w, int h, int black) {
 
 void bio_tone(int tone) {
     log_machine("TONE %d ", tone, 0, 0, 0, 0);
+}
+
+static bool midi_on;
+static const char *inkeys = "";
+int bio_inkey(void) {
+    return *inkeys ? *inkeys++ : 0;
+}
+
+bool bio_wav_play(const char *name) {
+    size_t n = strlen(machine);
+    snprintf(machine + n, sizeof(machine) - n, "PLAYWAV %s ", name);
+    midi_on = true;
+    return strcmp(name, "Missing") != 0;
+}
+
+int bio_midi_play(const char *name) {
+    size_t n = strlen(machine);
+    snprintf(machine + n, sizeof(machine) - n, "PLAYMIDI %s ", name);
+    if (strcmp(name, "Missing") == 0)
+        return BIO_MIDI_MISSING;
+    if (strcmp(name, "Huge") == 0)
+        return BIO_MIDI_TOO_BIG;
+    midi_on = true;
+    return 0;
+}
+
+void bio_midi_stop(void) {
+    log_machine("STOPMIDI ", 0, 0, 0, 0, 0);
+    midi_on = false;
+}
+
+bool bio_midi_playing(void) {
+    return midi_on;
+}
+
+void bio_help(void) {
+    size_t n = strlen(machine);
+    snprintf(machine + n, sizeof(machine) - n, "HELP ");
 }
 
 bool bio_wait(int ms) {
@@ -329,6 +373,140 @@ static void test_machine(void) {
     CHECK(strcmp(machine, "CLS PSET 1 2 1 LINE 0 0 9 9 0 BOX 1 1 5 5 1 TONE 3 AT 2 3 WAIT 100 ") == 0, "graphics: %s",
           machine);
     expect(TYPED("TONE 11"), "HOW?\n", "TONE 0-10 only");
+    expect(TYPED("PLAYMIDI \"Fur Elise\":PRINT MIDI():STOPMIDI:PRINT MIDI()"), "1\n0\n", "PLAYMIDI, MIDI(), STOPMIDI");
+    CHECK(strcmp(machine, "PLAYMIDI Fur Elise STOPMIDI ") == 0, "PLAYMIDI reaches the machine as typed: %s", machine);
+    expect(TYPED("PLAYMIDI \"Missing\""), "HOW?\n", "a song that isn't there");
+    expect(TYPED("PLAYMIDI \"Huge\""), "SORRY\n", "a song too big");
+    expect(TYPED("PLAYMIDI \"A/B\""), "HOW?\n", "a song name with a /");
+    expect(TYPED("PLAYMIDI"), "HOW?\n", "PLAYMIDI without a name");
+    machine[0] = 0;
+    expect(TYPED("PLAYWAV \"TONES/TONE3\":PRINT MIDI():STOPWAV:PRINT MIDI()"), "1\n0\n", "PLAYWAV, STOPWAV");
+    CHECK(strcmp(machine, "PLAYWAV TONES/TONE3 STOPMIDI ") == 0, "PLAYWAV reaches the machine: %s", machine);
+    expect(TYPED("PLAYWAV \"Missing\""), "HOW?\n", "a sound that can't be played");
+    expect(TYPED("PLAYWAV \"../X\""), "HOW?\n", "PLAYWAV can't leave /SOUNDS");
+    expect(TYPED("PLAYMIDI \"TONES/X\""), "HOW?\n", "a song name has no folders");
+}
+
+static void test_dim(void) {
+    basic_new();
+    expect(TYPED("DIM A(3):A(2)=7:PRINT A(2);A(0);A(3)"), "700\n", "a one-index array");
+    expect(TYPED("NEW", "DIM M(2,3):M(1,2)=5:M(2,3)=9:PRINT M(1,2);M(2,3);M(0,0);M(2,2)"), "5900\n", "a two-index array");
+    expect(TYPED("NEW", "DIM A(2):A=5:A(1)=6:PRINT A;A(1)"), "56\n", "A and A() are different variables");
+    expect(TYPED("NEW", "DIM A(2,2):B(1)=1"), "HOW?\n", "an array that wasn't dimensioned");
+    expect(TYPED("NEW", "DIM A(3):PRINT A(4)"), "HOW?\n", "past the end");
+    expect(TYPED("NEW", "DIM A(3):PRINT A(-1)"), "HOW?\n", "before the start");
+    expect(TYPED("NEW", "DIM M(2,2):PRINT M(3,0)"), "HOW?\n", "past the end of the first index");
+    expect(TYPED("NEW", "DIM M(2,2):PRINT M(0,3)"), "HOW?\n", "past the end of the second");
+    expect(TYPED("NEW", "DIM M(2,2):PRINT M(1)"), "WHAT?\n", "one index for two");
+    expect(TYPED("NEW", "DIM A(3):PRINT A(1,1)"), "WHAT?\n", "two indices for one");
+    expect(TYPED("NEW", "DIM A(3)", "DIM A(4)"), "HOW?\n", "dimensioned twice");
+    expect(TYPED("NEW", "DIM A(3), B(2,2), C$(4):B(1,1)=2:C$(4)=\"Z\":PRINT B(1,1);C$(4)"), "2Z\n", "DIM with a list");
+    expect(TYPED("NEW", "DIM A(2000)"), "SORRY\n", "too many elements");
+    expect(TYPED("NEW", "DIM A(1023)", "DIM B(0)"), "SORRY\n", "the pool is used up");
+    expect(TYPED("NEW", "DIM A(-1)"), "HOW?\n", "a negative size");
+    expect(TYPED("NEW", "10 DIM A(5)", "20 A(5)=1", "30 PRINT A(5)", "RUN", "RUN"), "1\n1\n", "RUN clears the arrays");
+    expect(TYPED("NEW", "DIM A(5)", "NEW", "DIM A(2)", "PRINT A(2)"), "0\n", "NEW clears the arrays");
+    expect(TYPED("NEW", "DIM A(2):A(1)=3:A(2)=A(1)*A(1)+1:PRINT A(2)"), "10\n", "elements in expressions");
+    expect(TYPED("NEW", "DIM A(9):FOR I=0 TO 9:A(I)=I*I:NEXT:PRINT A(3);A(9)"), "981\n", "an index that is a variable");
+    expect(TYPED("NEW", "DIM A(2):A(A(1)+1)=4:PRINT A(1)"), "4\n", "an index that is an element");
+    inputs[0] = "12";
+    input_count = 1;
+    input_next = 0;
+    expect(TYPED("NEW", "10 DIM A(2,2)", "20 INPUT A(1,2)", "30 PRINT A(1,2)", "RUN"), "A(1,2)? 12\n12\n", "INPUT into an element");
+    input_count = 0;
+
+    expect(TYPED("NEW", "DIM S$(3):S$(2)=\"HI\":S$(3)=S$(2)+\"!\":PRINT S$(3);LEN(S$(1))"), "HI!0\n", "a string array");
+    expect(TYPED("NEW", "DIM A$(2):A$=\"X\":A$(1)=\"Y\":PRINT A$;A$(1)"), "XY\n", "A$ and A$() are different variables");
+    expect(TYPED("NEW", "PRINT B$(1)"), "HOW?\n", "a string array that wasn't dimensioned");
+    expect(TYPED("NEW", "DIM A$(2):PRINT A$(3)"), "HOW?\n", "past the end of a string array");
+    expect(TYPED("NEW", "DIM A$(2):DIM A$(3)"), "HOW?\n", "a string array dimensioned twice");
+    expect(TYPED("NEW", "DIM A$(2,2)"), "WHAT?\n", "a string array has one index");
+    expect(TYPED("NEW", "DIM A$(600)"), "SORRY\n", "too many string elements");
+    expect(TYPED("NEW", "DIM A$(2):A$(0)=\"A\":A$(1)=\"B\":IF A$(0)<A$(1) THEN PRINT \"LESS\""), "LESS\n", "comparing elements");
+    expect(TYPED("NEW", "DIM A$(2):A$(1)=\"HELLO\":PRINT LEFT$(A$(1),2);MID$(A$(1),2,2);LEN(A$(1))"), "HEEL5\n", "functions of elements");
+    inputs[0] = "some words";
+    input_count = 1;
+    input_next = 0;
+    expect(TYPED("NEW", "10 DIM N$(3)", "20 INPUT N$(2)", "30 PRINT \"[\";N$(2);\"]\"", "RUN"), "N$(2)? some words\n[some words]\n",
+           "INPUT into a string element");
+    input_count = 0;
+    expect(TYPED("NEW", "10 DIM S$(9)", "20 FOR I=1 TO 300", "30 S$(I MOD 10)=STR$(I)+\"XXXXXXXXXXXXXXXXXXXXXXXX\"", "40 NEXT",
+                 "50 PRINT LEFT$(S$(7),3);LEN(S$(0));LEFT$(S$(3),3)", "RUN"),
+           "29727293\n", "string array elements survive the pool being packed");
+    expect(TYPED("NEW", "DIM S$(2):PRINT LEN(S$(2))"), "0\n", "elements start empty");
+    expect(TYPED("NEW", "DIM S$(4)", "MEM"),
+           "PROGRAM 16384 FREE OF 16384\nSTRINGS 4096 FREE OF 4096\nARRAYS 1024 FREE OF 1024\nSTRING ARRAYS 507 FREE OF 512\n",
+           "MEM counts the string elements");
+}
+
+static void test_system(void) {
+    basic_new();
+    expect(TYPED("VER"), "PX-BASIC " BASIC_VERSION "\n", "VER");
+    expect(TYPED("MEM"), "PROGRAM 16384 FREE OF 16384\nSTRINGS 4096 FREE OF 4096\nARRAYS 1024 FREE OF 1024\nSTRING ARRAYS 512 FREE OF 512\n", "MEM, nothing used");
+    expect(TYPED("10 PRINT 1", "A$=\"HELLO\"", "MEM"), "PROGRAM 16374 FREE OF 16384\nSTRINGS 4091 FREE OF 4096\nARRAYS 1024 FREE OF 1024\nSTRING ARRAYS 512 FREE OF 512\n", "MEM, some used");
+    TYPED("HELP:CMDS");
+    CHECK(strcmp(machine, "HELP HELP ") == 0, "HELP and CMDS open the keyword map: %s", machine);
+    keys_waiting = 0;
+    exited = false;
+    TYPED("PRINT 1:EXIT:PRINT 2");
+    CHECK(exited, "EXIT asks the app to end");
+    expect(output, "1\n", "EXIT ends the line");
+}
+
+static void test_strings(void) {
+    basic_new();
+    expect(TYPED("A$=\"HELLO\"", "PRINT A$"), "HELLO\n", "a string variable");
+    expect(TYPED("A$=\"HE\":B$=\"LLO\":PRINT A$+B$+\"!\""), "HELLO!\n", "strings joined with +");
+    expect(TYPED("A$=\"HELLO\":A$=A$+A$:PRINT A$"), "HELLOHELLO\n", "a variable on both sides");
+    expect(TYPED("LET C$=\"X\"", "PRINT C$;LEN(C$)"), "X1\n", "LET with a string");
+    expect(TYPED("PRINT LEN(\"ABC\");LEN(\"\")"), "30\n", "LEN");
+    expect(TYPED("A$=\"HELLO\":PRINT LEFT$(A$,2);\"|\";RIGHT$(A$,3);\"|\";MID$(A$,2,3);\"|\";MID$(A$,4)"), "HE|LLO|ELL|LO\n",
+           "LEFT$, RIGHT$, MID$");
+    expect(TYPED("A$=\"HI\":PRINT LEFT$(A$,9);RIGHT$(A$,9);MID$(A$,9);MID$(A$,1,0);\"|\""), "HIHI|\n", "more than there is");
+    expect(TYPED("PRINT CHR$(65);ASC(\"A\");ASC(\"AB\")"), "A6565\n", "CHR$ and ASC");
+    expect(TYPED("PRINT STR$(12.5);\"|\";STR$(-3);\"|\";VAL(\"3.5\")+1;\"|\";VAL(\"X\");\"|\";VAL(\" 7\")"), "12.5|-3|4.5|0|7\n",
+           "STR$ and VAL");
+    expect(TYPED("PRINT INSTR(\"HELLO\",\"LL\");INSTR(\"HELLO\",\"Z\");INSTR(\"HELLO\",\"\")"), "300\n", "INSTR");
+    expect(TYPED("A$=\"B\":IF A$=\"B\" THEN PRINT \"YES\"", "IF A$<>\"B\" THEN PRINT \"NO\"", "IF \"A\"<A$ THEN PRINT \"LT\""),
+           "YES\nLT\n", "comparing strings");
+    expect(TYPED("PRINT (\"A\"=\"B\");(\"AB\">\"A\");(\"A\"<=\"A\");(\"B\">=\"C\")"), "0110\n", "comparisons are 1 or 0");
+    expect(TYPED("A$=\"\"", "PRINT LEN(A$);\"|\";A$;\"|\""), "0||\n", "an empty string");
+    expect(TYPED("A$=\"X\"", "NEW", "PRINT LEN(A$)"), "0\n", "NEW clears the strings");
+    expect(TYPED("A=5:A$=\"S\":PRINT A;A$"), "5S\n", "A and A$ are different variables");
+
+    /* the pool: rewriting A$ again and again must pack it, and keep B$ */
+    expect(TYPED("NEW", "10 B$=\"KEEP\"", "20 FOR I=1 TO 300", "30 A$=STR$(I)+\"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\"",
+                 "40 NEXT", "50 PRINT B$;LEN(A$);LEFT$(A$,3)", "RUN"),
+           "KEEP39300\n", "the pool is packed when it is full");
+
+    /* too long, and too many */
+    expect(TYPED("A$=\"0123456789012345678901234567890123456789\"", "B$=A$+A$+A$+A$+A$+A$+A$"), "SORRY\n", "over 255 characters");
+    expect(TYPED("X$=\"\"", "FOR I=1 TO 25:X$=X$+\"0123456789\":NEXT",
+                 "A$=X$:B$=X$:C$=X$:D$=X$:E$=X$:F$=X$:G$=X$:H$=X$", "I$=X$:J$=X$:K$=X$:L$=X$:M$=X$:N$=X$:O$=X$",
+                 "PRINT LEN(O$)", "P$=X$", "PRINT LEN(O$);LEN(P$)"),
+           "250\nSORRY\n2500\n", "the pool is full (X$ and 15 more are 4000 of 4096)");
+
+    /* keys, INPUT, names */
+    inkeys = "7Q";
+    expect(TYPED("PRINT INKEY$;INKEY$;\"|\";INKEY$;\"|\";LEN(INKEY$)"), "7Q||0\n", "INKEY$");
+    inputs[0] = "some text";
+    input_count = 1;
+    input_next = 0;
+    expect(TYPED("NEW", "10 INPUT N$", "20 PRINT \"[\";N$;\"]\"", "RUN"), "N$? some text\n[some text]\n", "INPUT into a string");
+    input_count = 0;
+    machine[0] = 0;
+    expect(TYPED("A$=\"Fur\":PLAYMIDI A$+\" Elise\""), "", "PLAYMIDI with a string");
+    CHECK(strcmp(machine, "PLAYMIDI Fur Elise ") == 0, "the name is the string: %s", machine);
+
+    /* mistakes */
+    expect(TYPED("PRINT \"A\"+1"), "WHAT?\n", "a string plus a number");
+    expect(TYPED("A$=5"), "WHAT?\n", "a number into a string");
+    expect(TYPED("A=\"X\""), "WHAT?\n", "a string into a number");
+    expect(TYPED("IF \"A\" THEN PRINT 1"), "WHAT?\n", "a string alone is not a condition");
+    expect(TYPED("PRINT LEFT$(\"A\",-1)"), "HOW?\n", "LEFT$ of a negative count");
+    expect(TYPED("PRINT MID$(\"ABC\",0)"), "HOW?\n", "MID$ from 0");
+    expect(TYPED("PRINT CHR$(0)"), "HOW?\n", "CHR$(0)");
+    expect(TYPED("PRINT ASC(\"\")"), "HOW?\n", "ASC of nothing");
 }
 
 static void test_limits(void) {
@@ -366,6 +544,9 @@ int main(void) {
     test_input();
     test_files();
     test_machine();
+    test_strings();
+    test_dim();
+    test_system();
     test_limits();
     printf(failures ? "%d FAILED\n" : "all passed\n", failures);
     return failures != 0;
